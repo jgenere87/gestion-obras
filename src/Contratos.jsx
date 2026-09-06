@@ -79,7 +79,7 @@ export default function Contratos({ correo, perfil }) {
             : "Aún no se han registrado contratos."}
         </div>
       ) : contratos.map((c) => (
-        <ContratoCard key={c.id} c={c} puedeEditar={puedeEditar} esAdmin={esAdmin}
+        <ContratoCard key={c.id} c={c} puedeEditar={puedeEditar} esAdmin={esAdmin} correo={correo}
           expandido={expandido === c.id} onExpandir={() => setExpandido(expandido === c.id ? null : c.id)}
           onCambiarEstado={cambiarEstado} planificaciones={planificaciones} />
       ))}
@@ -90,7 +90,8 @@ export default function Contratos({ correo, perfil }) {
 function FormContrato({ correo, planificaciones, onGuardado }) {
   const [f, setF] = useState({
     proyectoId: "", contratista: "", numeroContrato: "", tipoContrato: "Precio unitario",
-    montoContratado: "", fechaContrato: "", fechaInicio: "", fechaFin: "", observaciones: "",
+    montoContratado: "", fechaContrato: "", numeroOrdenServicio: "", fechaOrdenServicio: "",
+    fechaInicio: "", fechaFin: "", observaciones: "",
   });
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
@@ -105,7 +106,9 @@ function FormContrato({ correo, planificaciones, onGuardado }) {
       proyecto_id: Number(f.proyectoId), proyecto: p?.[2] || "", contratista: f.contratista,
       numero_contrato: f.numeroContrato || null, tipo_contrato: f.tipoContrato,
       monto_contratado: Number(f.montoContratado) || 0,
-      fecha_contrato: f.fechaContrato || null, fecha_inicio: f.fechaInicio || null, fecha_fin: f.fechaFin || null,
+      fecha_contrato: f.fechaContrato || null,
+      numero_orden_servicio: f.numeroOrdenServicio || null, fecha_orden_servicio: f.fechaOrdenServicio || null,
+      fecha_inicio: f.fechaInicio || null, fecha_fin: f.fechaFin || null,
       observaciones: f.observaciones || null, usuario: correo,
     };
     const { data, error: e } = await supabase.from("contratos").insert(fila).select().single();
@@ -134,8 +137,17 @@ function FormContrato({ correo, planificaciones, onGuardado }) {
         <BuscarSelect value={f.contratista} onChange={(v) => setF({ ...f, contratista: v })}
           placeholder="— Seleccionar contratista —"
           options={CONTRATISTAS.map((c) => ({ value: c, label: c }))} /></div>
+
+      <div className="sec-t" style={{ fontSize: 15 }}>Contratado y/o Adjudicado</div>
       <div className="fld"><label>Número de contrato</label>
         <input placeholder="CC-2026-001" value={f.numeroContrato} onChange={(e) => setF({ ...f, numeroContrato: e.target.value })} /></div>
+      <div className="fld"><label>Fecha de contrato</label>
+        <input type="date" value={f.fechaContrato} onChange={(e) => setF({ ...f, fechaContrato: e.target.value })} /></div>
+      <div className="fld"><label>Número de Orden de Servicio</label>
+        <input placeholder="OS-2026-001" value={f.numeroOrdenServicio} onChange={(e) => setF({ ...f, numeroOrdenServicio: e.target.value })} /></div>
+      <div className="fld"><label>Fecha de Orden de Servicio</label>
+        <input type="date" value={f.fechaOrdenServicio} onChange={(e) => setF({ ...f, fechaOrdenServicio: e.target.value })} /></div>
+
       <div className="fld"><label>Tipo de contrato</label>
         <select value={f.tipoContrato} onChange={(e) => setF({ ...f, tipoContrato: e.target.value })}>
           <option>Precio unitario</option><option>Suma alzada</option><option>Administración delegada</option>
@@ -143,8 +155,6 @@ function FormContrato({ correo, planificaciones, onGuardado }) {
       <div className="fld"><label>Monto contratado</label>
         <input type="number" min="0" step="any" placeholder="0.00" value={f.montoContratado}
           onChange={(e) => setF({ ...f, montoContratado: e.target.value })} /></div>
-      <div className="fld"><label>Fecha de contrato</label>
-        <input type="date" value={f.fechaContrato} onChange={(e) => setF({ ...f, fechaContrato: e.target.value })} /></div>
       <div style={{ display: "flex", gap: 10 }}>
         <div className="fld" style={{ flex: 1 }}><label>Inicio</label>
           <input type="date" value={f.fechaInicio} onChange={(e) => setF({ ...f, fechaInicio: e.target.value })} /></div>
@@ -160,7 +170,34 @@ function FormContrato({ correo, planificaciones, onGuardado }) {
   );
 }
 
-function ContratoCard({ c, puedeEditar, esAdmin, expandido, onExpandir, onCambiarEstado, planificaciones }) {
+function ContratoCard({ c: cInicial, puedeEditar, esAdmin, expandido, onExpandir, onCambiarEstado, planificaciones, correo }) {
+  const [c, setC] = useState(cInicial);
+  const [editando, setEditando] = useState(false);
+  const [ef, setEf] = useState({
+    contratista: c.contratista, numeroContrato: c.numero_contrato || "", fechaContrato: c.fecha_contrato || "",
+    numeroOrdenServicio: c.numero_orden_servicio || "", fechaOrdenServicio: c.fecha_orden_servicio || "",
+    tipoContrato: c.tipo_contrato, montoContratado: c.monto_contratado,
+    fechaInicio: c.fecha_inicio || "", fechaFin: c.fecha_fin || "", observaciones: c.observaciones || "",
+  });
+  const [guardandoEdit, setGuardandoEdit] = useState(false);
+  const [errorEdit, setErrorEdit] = useState("");
+
+  const puedeEditarEste = puedeEditar || c.usuario === correo;
+
+  const guardarEdicion = async () => {
+    setGuardandoEdit(true); setErrorEdit("");
+    const { data, error } = await supabase.from("contratos").update({
+      contratista: ef.contratista, numero_contrato: ef.numeroContrato || null, fecha_contrato: ef.fechaContrato || null,
+      numero_orden_servicio: ef.numeroOrdenServicio || null, fecha_orden_servicio: ef.fechaOrdenServicio || null,
+      tipo_contrato: ef.tipoContrato, monto_contratado: Number(ef.montoContratado) || 0,
+      fecha_inicio: ef.fechaInicio || null, fecha_fin: ef.fechaFin || null, observaciones: ef.observaciones || null,
+    }).eq("id", c.id).select().single();
+    setGuardandoEdit(false);
+    if (error) { setErrorEdit("No se pudo guardar: " + error.message); return; }
+    setC(data);
+    setEditando(false);
+  };
+
   const siguienteEstado = {
     "Borrador": "En licitación",
     "En licitación": "Pendiente aprobación",
@@ -175,15 +212,57 @@ function ContratoCard({ c, puedeEditar, esAdmin, expandido, onExpandir, onCambia
         </div>
         <div className="stamp">{c.estado}</div>
       </div>
-      <div className="t-body">
-        <b>{c.contratista}</b> — {c.tipo_contrato}<br />
-        Monto contratado: <span className="t-qty">${Number(c.monto_contratado).toLocaleString()}</span><br />
-        {c.fecha_inicio && c.fecha_fin && <>Vigencia: {c.fecha_inicio} → {c.fecha_fin}<br /></>}
-        {c.aprobado_por && <>Aprobado por: {c.aprobado_por} el {c.fecha_aprobacion}<br /></>}
-        {c.observaciones && <><i>“{c.observaciones}”</i><br /></>}
-      </div>
+
+      {!editando ? (
+        <div className="t-body">
+          <b>{c.contratista}</b> — {c.tipo_contrato}<br />
+          Monto contratado: <span className="t-qty">${Number(c.monto_contratado).toLocaleString()}</span><br />
+          {c.numero_orden_servicio && <>Orden de Servicio: {c.numero_orden_servicio}{c.fecha_orden_servicio ? ` · ${c.fecha_orden_servicio}` : ""}<br /></>}
+          {c.fecha_inicio && c.fecha_fin && <>Vigencia: {c.fecha_inicio} → {c.fecha_fin}<br /></>}
+          {c.aprobado_por && <>Aprobado por: {c.aprobado_por} el {c.fecha_aprobacion}<br /></>}
+          {c.observaciones && <><i>“{c.observaciones}”</i><br /></>}
+        </div>
+      ) : (
+        <div style={{ padding: "0 20px 14px 26px" }}>
+          <div className="fld"><label>Contratista</label>
+            <BuscarSelect value={ef.contratista} onChange={(v) => setEf({ ...ef, contratista: v })}
+              placeholder="— Seleccionar contratista —" options={CONTRATISTAS.map((x) => ({ value: x, label: x }))} /></div>
+          <div className="sec-t" style={{ fontSize: 14 }}>Contratado y/o Adjudicado</div>
+          <div className="fld"><label>Número de contrato</label>
+            <input value={ef.numeroContrato} onChange={(e) => setEf({ ...ef, numeroContrato: e.target.value })} /></div>
+          <div className="fld"><label>Fecha de contrato</label>
+            <input type="date" value={ef.fechaContrato} onChange={(e) => setEf({ ...ef, fechaContrato: e.target.value })} /></div>
+          <div className="fld"><label>Número de Orden de Servicio</label>
+            <input value={ef.numeroOrdenServicio} onChange={(e) => setEf({ ...ef, numeroOrdenServicio: e.target.value })} /></div>
+          <div className="fld"><label>Fecha de Orden de Servicio</label>
+            <input type="date" value={ef.fechaOrdenServicio} onChange={(e) => setEf({ ...ef, fechaOrdenServicio: e.target.value })} /></div>
+          <div className="fld"><label>Tipo de contrato</label>
+            <select value={ef.tipoContrato} onChange={(e) => setEf({ ...ef, tipoContrato: e.target.value })}>
+              <option>Precio unitario</option><option>Suma alzada</option><option>Administración delegada</option>
+            </select></div>
+          <div className="fld"><label>Monto contratado</label>
+            <input type="number" min="0" step="any" value={ef.montoContratado} onChange={(e) => setEf({ ...ef, montoContratado: e.target.value })} /></div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div className="fld" style={{ flex: 1 }}><label>Inicio</label>
+              <input type="date" value={ef.fechaInicio} onChange={(e) => setEf({ ...ef, fechaInicio: e.target.value })} /></div>
+            <div className="fld" style={{ flex: 1 }}><label>Fin</label>
+              <input type="date" value={ef.fechaFin} onChange={(e) => setEf({ ...ef, fechaFin: e.target.value })} /></div>
+          </div>
+          <div className="fld"><label>Observaciones</label>
+            <textarea rows={2} value={ef.observaciones} onChange={(e) => setEf({ ...ef, observaciones: e.target.value })} /></div>
+          {errorEdit && <div className="error-msg">{errorEdit}</div>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-ok" disabled={guardandoEdit} onClick={guardarEdicion}>
+              {guardandoEdit ? "Guardando…" : "Guardar cambios"}</button>
+            <button className="btn btn-gh" onClick={() => setEditando(false)}>Cancelar</button>
+          </div>
+        </div>
+      )}
 
       <div className="t-actions" style={{ flexWrap: "wrap" }}>
+        {puedeEditarEste && !editando && (
+          <button className="btn btn-gh" onClick={() => setEditando(true)}>Editar</button>
+        )}
         <button className="btn btn-gh" onClick={onExpandir}>
           {expandido ? "Ocultar partidas" : "Ver / agregar partidas"}
         </button>
@@ -206,6 +285,7 @@ function ContratoCard({ c, puedeEditar, esAdmin, expandido, onExpandir, onCambia
     </div>
   );
 }
+
 
 function PartidasContrato({ contrato, puedeEditar, planificaciones }) {
   const [partidas, setPartidas] = useState([]);

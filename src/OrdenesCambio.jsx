@@ -56,38 +56,101 @@ export default function OrdenesCambio({ correo, perfil }) {
        ordenes.length === 0 ? (
         <div className="empty"><b>Sin órdenes de cambio</b>Crea la primera arriba si necesitas ajustar alcance, costo o plazo.</div>
       ) : ordenes.map((o) => (
-        <div key={o.id} className="ticket" style={{ "--e": ESTADOS_OC[o.estado] }}>
-          <div className="t-head">
-            <div>
-              <div className="t-id">{o.tipo_cambio} · {o.fecha_solicitud}</div>
-              <div className="t-proj">{o.proyecto}</div>
-            </div>
-            <div className="stamp">{o.estado}</div>
-          </div>
-          <div className="t-body">
-            <b>{o.descripcion}</b><br />
-            {o.causa && <>Causa: {o.causa}<br /></>}
-            Monto solicitado: <span className="t-qty">${Number(o.monto_solicitado).toLocaleString()}</span>
-            {o.monto_aprobado != null && <> · Aprobado: ${Number(o.monto_aprobado).toLocaleString()}</>}<br />
-            {o.dias_impacto > 0 && <>Impacto en plazo: {o.dias_impacto} días<br /></>}
-            <span style={{ fontSize: 11, fontFamily: "IBM Plex Mono" }}>{o.solicitado_por}</span>
-          </div>
-          {puedeAprobar && (o.estado === "Solicitada" || o.estado === "En revisión") && (
-            <div className="t-actions">
-              <button className="btn btn-ok" onClick={() => cambiarEstado(o, "Aprobada")}>Aprobar</button>
-              <button className="btn btn-no" onClick={() => cambiarEstado(o, "Rechazada")}>Rechazar</button>
-            </div>
-          )}
-          {puedeAprobar && o.estado === "Aprobada" && (
-            <div className="t-actions">
-              <button className="btn btn-amb" onClick={() => cambiarEstado(o, "Incorporada al contrato")}>
-                Incorporar al contrato
-              </button>
-            </div>
-          )}
-        </div>
+        <OcCard key={o.id} o={o} puedeAprobar={puedeAprobar} correo={correo} onCambiarEstado={cambiarEstado} onCambio={cargar} />
       ))}
     </>
+  );
+}
+
+function OcCard({ o: oInicial, puedeAprobar, correo, onCambiarEstado, onCambio }) {
+  const [o, setO] = useState(oInicial);
+  const [editando, setEditando] = useState(false);
+  const [ef, setEf] = useState({
+    tipoCambio: o.tipo_cambio, descripcion: o.descripcion, causa: o.causa || "",
+    montoSolicitado: o.monto_solicitado, diasImpacto: o.dias_impacto,
+  });
+  const [guardandoEdit, setGuardandoEdit] = useState(false);
+  const [errorEdit, setErrorEdit] = useState("");
+
+  const puedeEditarEste = puedeAprobar || o.solicitado_por === correo;
+
+  const guardarEdicion = async () => {
+    setGuardandoEdit(true); setErrorEdit("");
+    const { data, error } = await supabase.from("ordenes_cambio").update({
+      tipo_cambio: ef.tipoCambio, descripcion: ef.descripcion, causa: ef.causa || null,
+      monto_solicitado: Number(ef.montoSolicitado) || 0, dias_impacto: Number(ef.diasImpacto) || 0,
+    }).eq("id", o.id).select().single();
+    setGuardandoEdit(false);
+    if (error) { setErrorEdit("No se pudo guardar: " + error.message); return; }
+    setO(data);
+    setEditando(false);
+    onCambio();
+  };
+
+  return (
+    <div className="ticket" style={{ "--e": ESTADOS_OC[o.estado] }}>
+      <div className="t-head">
+        <div>
+          <div className="t-id">{o.tipo_cambio} · {o.fecha_solicitud}</div>
+          <div className="t-proj">{o.proyecto}</div>
+        </div>
+        <div className="stamp">{o.estado}</div>
+      </div>
+
+      {!editando ? (
+        <div className="t-body">
+          <b>{o.descripcion}</b><br />
+          {o.causa && <>Causa: {o.causa}<br /></>}
+          Monto solicitado: <span className="t-qty">${Number(o.monto_solicitado).toLocaleString()}</span>
+          {o.monto_aprobado != null && <> · Aprobado: ${Number(o.monto_aprobado).toLocaleString()}</>}<br />
+          {o.dias_impacto > 0 && <>Impacto en plazo: {o.dias_impacto} días<br /></>}
+          <span style={{ fontSize: 11, fontFamily: "IBM Plex Mono" }}>{o.solicitado_por}</span>
+        </div>
+      ) : (
+        <div style={{ padding: "0 20px 14px 26px" }}>
+          <div className="fld"><label>Tipo de cambio</label>
+            <select value={ef.tipoCambio} onChange={(e) => setEf({ ...ef, tipoCambio: e.target.value })}>
+              <option>Adicional</option><option>Deductivo</option><option>Cambio de alcance</option>
+              <option>Cambio de diseño</option><option>Extensión de plazo</option>
+            </select></div>
+          <div className="fld"><label>Descripción del cambio</label>
+            <textarea rows={2} value={ef.descripcion} onChange={(e) => setEf({ ...ef, descripcion: e.target.value })} /></div>
+          <div className="fld"><label>Causa</label>
+            <textarea rows={2} value={ef.causa} onChange={(e) => setEf({ ...ef, causa: e.target.value })} /></div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div className="fld" style={{ flex: 1 }}><label>Monto solicitado</label>
+              <input type="number" min="0" step="any" value={ef.montoSolicitado} onChange={(e) => setEf({ ...ef, montoSolicitado: e.target.value })} /></div>
+            <div className="fld" style={{ flex: 1 }}><label>Días de impacto</label>
+              <input type="number" min="0" value={ef.diasImpacto} onChange={(e) => setEf({ ...ef, diasImpacto: e.target.value })} /></div>
+          </div>
+          {errorEdit && <div className="error-msg">{errorEdit}</div>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-ok" disabled={guardandoEdit} onClick={guardarEdicion}>
+              {guardandoEdit ? "Guardando…" : "Guardar cambios"}</button>
+            <button className="btn btn-gh" onClick={() => setEditando(false)}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {!editando && (
+        <div className="t-actions" style={{ flexWrap: "wrap" }}>
+          {puedeEditarEste && (
+            <button className="btn btn-gh" onClick={() => setEditando(true)}>Editar</button>
+          )}
+          {puedeAprobar && (o.estado === "Solicitada" || o.estado === "En revisión") && (
+            <>
+              <button className="btn btn-ok" onClick={() => onCambiarEstado(o, "Aprobada")}>Aprobar</button>
+              <button className="btn btn-no" onClick={() => onCambiarEstado(o, "Rechazada")}>Rechazar</button>
+            </>
+          )}
+          {puedeAprobar && o.estado === "Aprobada" && (
+            <button className="btn btn-amb" onClick={() => onCambiarEstado(o, "Incorporada al contrato")}>
+              Incorporar al contrato
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

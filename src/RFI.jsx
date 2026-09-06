@@ -64,7 +64,7 @@ export default function RFI({ correo, perfil }) {
        visibles.length === 0 ? (
         <div className="empty"><b>Sin RFIs {filtro !== "Todos" ? `en “${filtro}”` : ""}</b>Crea el primero arriba para pedir una aclaración formal.</div>
       ) : visibles.map((r) => (
-        <RfiCard key={r.id} r={r} puedeResponder={puedeResponder} vencido={vencido(r)}
+        <RfiCard key={r.id} r={r} puedeResponder={puedeResponder} vencido={vencido(r)} correo={correo}
           onCerrar={cerrar} onCambio={cargar} aviso={aviso} />
       ))}
     </>
@@ -124,12 +124,36 @@ function FormRFI({ correo, onGuardado }) {
   );
 }
 
-function RfiCard({ r, puedeResponder, vencido, onCerrar, onCambio, aviso }) {
+function RfiCard({ r: rInicial, puedeResponder, vencido, onCerrar, onCambio, aviso, correo }) {
+  const [r, setR] = useState(rInicial);
   const [mostrarRespuesta, setMostrarRespuesta] = useState(false);
   const [respuesta, setRespuesta] = useState(r.respuesta || "");
   const [impactaCosto, setImpactaCosto] = useState(r.impacta_costo);
   const [impactaPlazo, setImpactaPlazo] = useState(r.impacta_plazo);
   const [guardando, setGuardando] = useState(false);
+
+  const [editando, setEditando] = useState(false);
+  const [ef, setEf] = useState({
+    asunto: r.asunto, pregunta: r.pregunta, referencia: r.referencia || "",
+    prioridad: r.prioridad, fechaLimite: r.fecha_limite || "",
+  });
+  const [guardandoEdit, setGuardandoEdit] = useState(false);
+  const [errorEdit, setErrorEdit] = useState("");
+
+  const puedeEditarEste = puedeResponder || r.solicitado_por === correo;
+
+  const guardarEdicion = async () => {
+    setGuardandoEdit(true); setErrorEdit("");
+    const { data, error } = await supabase.from("rfis").update({
+      asunto: ef.asunto, pregunta: ef.pregunta, referencia: ef.referencia || null,
+      prioridad: ef.prioridad, fecha_limite: ef.fechaLimite || null,
+    }).eq("id", r.id).select().single();
+    setGuardandoEdit(false);
+    if (error) { setErrorEdit("No se pudo guardar: " + error.message); return; }
+    setR(data);
+    setEditando(false);
+    onCambio();
+  };
 
   const enviarRespuesta = async () => {
     if (!respuesta.trim()) return;
@@ -155,29 +179,63 @@ function RfiCard({ r, puedeResponder, vencido, onCerrar, onCambio, aviso }) {
         </div>
         <div className="stamp">{vencido ? "Vencido" : r.estado}</div>
       </div>
-      <div className="t-body">
-        <b>{r.asunto}</b>{" "}
-        <span className="unit-tag" style={{ background: PRIORIDAD_COLOR[r.prioridad] }}>{r.prioridad}</span><br />
-        {r.pregunta}<br />
-        {r.referencia && <>Ref.: {r.referencia}<br /></>}
-        {r.fecha_limite && <>Respuesta esperada antes de: {r.fecha_limite}<br /></>}
-        <span style={{ fontSize: 11, fontFamily: "IBM Plex Mono" }}>{r.solicitado_por}</span>
 
-        {r.respuesta && (
-          <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--linea)" }}>
-            <b style={{ color: "var(--verde)" }}>Respuesta:</b> {r.respuesta}<br />
-            {(r.impacta_costo || r.impacta_plazo) && (
-              <span style={{ fontSize: 12, color: "var(--rojo)" }}>
-                {r.impacta_costo && "⚠ Impacta costo "}{r.impacta_plazo && "⚠ Impacta plazo"}
-              </span>
-            )}
+      {!editando ? (
+        <div className="t-body">
+          <b>{r.asunto}</b>{" "}
+          <span className="unit-tag" style={{ background: PRIORIDAD_COLOR[r.prioridad] }}>{r.prioridad}</span><br />
+          {r.pregunta}<br />
+          {r.referencia && <>Ref.: {r.referencia}<br /></>}
+          {r.fecha_limite && <>Respuesta esperada antes de: {r.fecha_limite}<br /></>}
+          <span style={{ fontSize: 11, fontFamily: "IBM Plex Mono" }}>{r.solicitado_por}</span>
+
+          {r.respuesta && (
+            <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--linea)" }}>
+              <b style={{ color: "var(--verde)" }}>Respuesta:</b> {r.respuesta}<br />
+              {(r.impacta_costo || r.impacta_plazo) && (
+                <span style={{ fontSize: 12, color: "var(--rojo)" }}>
+                  {r.impacta_costo && "⚠ Impacta costo "}{r.impacta_plazo && "⚠ Impacta plazo"}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ padding: "0 20px 14px 26px" }}>
+          <div className="fld"><label>Asunto</label>
+            <input value={ef.asunto} onChange={(e) => setEf({ ...ef, asunto: e.target.value })} /></div>
+          <div className="fld"><label>Pregunta</label>
+            <textarea rows={3} value={ef.pregunta} onChange={(e) => setEf({ ...ef, pregunta: e.target.value })} /></div>
+          <div className="fld"><label>Referencia</label>
+            <input value={ef.referencia} onChange={(e) => setEf({ ...ef, referencia: e.target.value })} /></div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div className="fld" style={{ flex: 1 }}><label>Prioridad</label>
+              <select value={ef.prioridad} onChange={(e) => setEf({ ...ef, prioridad: e.target.value })}>
+                <option>Alta</option><option>Media</option><option>Baja</option>
+              </select></div>
+            <div className="fld" style={{ flex: 1 }}><label>Fecha límite</label>
+              <input type="date" value={ef.fechaLimite} onChange={(e) => setEf({ ...ef, fechaLimite: e.target.value })} /></div>
           </div>
-        )}
-      </div>
+          {errorEdit && <div className="error-msg">{errorEdit}</div>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-ok" disabled={guardandoEdit} onClick={guardarEdicion}>
+              {guardandoEdit ? "Guardando…" : "Guardar cambios"}</button>
+            <button className="btn btn-gh" onClick={() => setEditando(false)}>Cancelar</button>
+          </div>
+        </div>
+      )}
 
-      {puedeResponder && r.estado === "Abierto" && !mostrarRespuesta && (
-        <div className="t-actions">
-          <button className="btn btn-amb" onClick={() => setMostrarRespuesta(true)}>Responder</button>
+      {!editando && (
+        <div className="t-actions" style={{ flexWrap: "wrap" }}>
+          {puedeEditarEste && !mostrarRespuesta && (
+            <button className="btn btn-gh" onClick={() => setEditando(true)}>Editar</button>
+          )}
+          {puedeResponder && r.estado === "Abierto" && !mostrarRespuesta && (
+            <button className="btn btn-amb" onClick={() => setMostrarRespuesta(true)}>Responder</button>
+          )}
+          {puedeResponder && r.estado === "Respondido" && (
+            <button className="btn btn-ok" onClick={() => onCerrar(r)}>Cerrar RFI</button>
+          )}
         </div>
       )}
 
@@ -200,12 +258,6 @@ function RfiCard({ r, puedeResponder, vencido, onCerrar, onCambio, aviso }) {
               {guardando ? "Guardando…" : "Enviar respuesta"}</button>
             <button className="btn btn-gh" onClick={() => setMostrarRespuesta(false)}>Cancelar</button>
           </div>
-        </div>
-      )}
-
-      {puedeResponder && r.estado === "Respondido" && (
-        <div className="t-actions">
-          <button className="btn btn-ok" onClick={() => onCerrar(r)}>Cerrar RFI</button>
         </div>
       )}
     </div>

@@ -179,7 +179,7 @@ function Principal({ sesion, perfil }) {
               </div>
             ))}
             <div className="sec-t">Últimos reportes</div>
-            {visibles.slice(0, 3).map((r) => <Ticket key={r.id} r={r} />)}
+            {visibles.slice(0, 3).map((r) => <Ticket key={r.id} r={r} correo={sesion.user.email} perfil={perfil} />)}
           </>
         )}
 
@@ -201,7 +201,7 @@ function Principal({ sesion, perfil }) {
                 {perfil.rol !== "Admin" ? "Solo ves reportes de tus proyectos asignados." : "Los reportes del equipo aparecerán aquí."}</div>
             )}
             {visibles.map((r) => (
-              <Ticket key={r.id} r={r}>
+              <Ticket key={r.id} r={r} correo={sesion.user.email} perfil={perfil}>
                 <div className="t-actions">
                   {puedeValidar && r.estado === "Enviado" && <>
                     <button className="btn btn-ok" onClick={() => cambiarEstado(r.id, "Validado")}>Validar</button>
@@ -494,10 +494,28 @@ function FormReporte({ correo, onGuardado }) {
 }
 
 /* ══════════════ TICKET ══════════════ */
-function Ticket({ r, children }) {
+function Ticket({ r: rInicial, children, correo, perfil }) {
+  const [r, setR] = useState(rInicial);
   const [recursos, setRecursos] = useState(null);
   const [equiposHH, setEquiposHH] = useState(null);
   const [cargando, setCargando] = useState(false);
+  const [editando, setEditando] = useState(false);
+  const [ef, setEf] = useState({ cantidad: r.cantidad, frente: r.frente || "", comentario: r.comentario || "" });
+  const [guardandoEdit, setGuardandoEdit] = useState(false);
+  const [errorEdit, setErrorEdit] = useState("");
+
+  const puedeEditar = perfil.rol === "Admin" || perfil.rol === "Supervisor" || r.usuario === correo;
+
+  const guardarEdicion = async () => {
+    setGuardandoEdit(true); setErrorEdit("");
+    const { data, error } = await supabase.from("reportes").update({
+      cantidad: Number(ef.cantidad), frente: ef.frente || null, comentario: ef.comentario || null,
+    }).eq("id", r.id).select().single();
+    setGuardandoEdit(false);
+    if (error) { setErrorEdit("No se pudo guardar: " + error.message); return; }
+    setR(data);
+    setEditando(false);
+  };
 
   const verRecursos = async () => {
     if (recursos !== null) { setRecursos(null); return; } // toggle cerrar
@@ -531,16 +549,37 @@ function Ticket({ r, children }) {
         </div>
         <div className="stamp">{r.estado}</div>
       </div>
-      <div className="t-body">
-        {r.componente} → {r.paquete}<br />
-        <b>{r.actividad_id} · {r.actividad}</b> — <span className="t-qty">{r.cantidad} {r.unidad}</span><br />
-        {r.contratista}{r.frente ? ` · ${r.frente}` : ""}
-        {r.comentario ? <><br /><i>“{r.comentario}”</i></> : ""}
-        {r.foto_url && <><br /><a href={r.foto_url} target="_blank" rel="noreferrer">📷 Ver foto</a></>}
-        <br /><span style={{ fontSize: 11, fontFamily: "IBM Plex Mono" }}>{r.usuario}</span>
-      </div>
+
+      {!editando ? (
+        <div className="t-body">
+          {r.componente} → {r.paquete}<br />
+          <b>{r.actividad_id} · {r.actividad}</b> — <span className="t-qty">{r.cantidad} {r.unidad}</span><br />
+          {r.contratista}{r.frente ? ` · ${r.frente}` : ""}
+          {r.comentario ? <><br /><i>“{r.comentario}”</i></> : ""}
+          {r.foto_url && <><br /><a href={r.foto_url} target="_blank" rel="noreferrer">📷 Ver foto</a></>}
+          <br /><span style={{ fontSize: 11, fontFamily: "IBM Plex Mono" }}>{r.usuario}</span>
+        </div>
+      ) : (
+        <div style={{ padding: "0 20px 14px 26px" }}>
+          <div className="fld"><label>Cantidad ejecutada ({r.unidad})</label>
+            <input type="number" min="0" step="any" value={ef.cantidad} onChange={(e) => setEf({ ...ef, cantidad: e.target.value })} /></div>
+          <div className="fld"><label>Frente de trabajo</label>
+            <input value={ef.frente} onChange={(e) => setEf({ ...ef, frente: e.target.value })} /></div>
+          <div className="fld"><label>Comentario</label>
+            <textarea rows={2} value={ef.comentario} onChange={(e) => setEf({ ...ef, comentario: e.target.value })} /></div>
+          {errorEdit && <div className="error-msg">{errorEdit}</div>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-ok" disabled={guardandoEdit} onClick={guardarEdicion}>
+              {guardandoEdit ? "Guardando…" : "Guardar cambios"}</button>
+            <button className="btn btn-gh" onClick={() => { setEditando(false); setEf({ cantidad: r.cantidad, frente: r.frente || "", comentario: r.comentario || "" }); }}>Cancelar</button>
+          </div>
+        </div>
+      )}
 
       <div className="t-actions" style={{ paddingTop: 0 }}>
+        {puedeEditar && !editando && (
+          <button className="btn btn-gh" onClick={() => setEditando(true)}>Editar</button>
+        )}
         <button className="btn btn-gh" onClick={verRecursos}>
           {cargando ? "Cargando…" : recursos !== null ? "Ocultar recursos" : "Ver recursos"}
         </button>

@@ -103,42 +103,9 @@ export default function Cubicaciones({ correo, perfil }) {
            cubicaciones.length === 0 ? (
             <div className="empty"><b>Sin cubicaciones aún</b>{puedeEditar ? "Crea la primera arriba." : "Aún no hay cubicaciones registradas."}</div>
           ) : cubicaciones.map((c) => (
-            <div key={c.id} className="ticket" style={{ "--e": ESTADOS_CUB[c.estado] }}>
-              <div className="t-head">
-                <div>
-                  <div className="t-id">{c.periodo_desde} → {c.periodo_hasta}</div>
-                  <div className="t-proj">{c.proyecto}</div>
-                </div>
-                <div className="stamp">{c.estado}</div>
-              </div>
-              <div className="t-body">
-                <b>{c.contratista}</b><br />
-                Bruto: ${Number(c.monto_bruto).toLocaleString()} · Retención: {(c.porc_retencion * 100).toFixed(0)}%<br />
-                Neto a cobrar: <span className="t-qty">${Number(c.monto_neto).toLocaleString()}</span>
-              </div>
-              {puedeEditar && (
-                <div className="t-actions">
-                  {c.estado === "Borrador" && (
-                    <button className="btn btn-amb" onClick={async () => {
-                      await supabase.from("cubicaciones").update({ estado: "En revisión" }).eq("id", c.id); cargar();
-                    }}>Enviar a revisión</button>
-                  )}
-                  {c.estado === "En revisión" && <>
-                    <button className="btn btn-ok" onClick={() => aprobarCubicacion(c)}>Aprobar</button>
-                    <button className="btn btn-no" onClick={() => rechazarCubicacion(c)}>Rechazar</button>
-                  </>}
-                  {c.estado === "Aprobada" && (
-                    pagos.some((p) => p.cubicacion_id === c.id) ? (
-                      <span style={{ fontSize: 12, color: "var(--tinta2)", alignSelf: "center" }}>
-                        Ya tiene solicitud de pago generada
-                      </span>
-                    ) : (
-                      <button className="btn btn-amb" onClick={() => crearSolicitudPago(c)}>Generar solicitud de pago</button>
-                    )
-                  )}
-                </div>
-              )}
-            </div>
+            <CubicacionCard key={c.id} c={c} puedeEditar={puedeEditar} correo={correo}
+              pagos={pagos} onAprobar={aprobarCubicacion} onRechazar={rechazarCubicacion}
+              onCrearPago={crearSolicitudPago} onCambio={cargar} />
           ))}
         </>
       )}
@@ -208,6 +175,103 @@ function FormCubicacion({ correo, contratos, onGuardado }) {
       {error && <div className="error-msg">{error}</div>}
       <button className="btn btn-big" disabled={!ok || guardando} onClick={guardar}>
         {guardando ? "Guardando…" : "Guardar cubicación"}</button>
+    </div>
+  );
+}
+
+function CubicacionCard({ c: cInicial, puedeEditar, correo, pagos, onAprobar, onRechazar, onCrearPago, onCambio }) {
+  const [c, setC] = useState(cInicial);
+  const [editando, setEditando] = useState(false);
+  const [ef, setEf] = useState({
+    periodoDesde: c.periodo_desde, periodoHasta: c.periodo_hasta,
+    montoBruto: c.monto_bruto, porcRetencion: c.porc_retencion * 100,
+  });
+  const [guardandoEdit, setGuardandoEdit] = useState(false);
+  const [errorEdit, setErrorEdit] = useState("");
+
+  const puedeEditarEste = puedeEditar || c.usuario === correo;
+
+  const guardarEdicion = async () => {
+    setGuardandoEdit(true); setErrorEdit("");
+    const { data, error } = await supabase.from("cubicaciones").update({
+      periodo_desde: ef.periodoDesde, periodo_hasta: ef.periodoHasta,
+      monto_bruto: Number(ef.montoBruto), porc_retencion: Number(ef.porcRetencion) / 100,
+    }).eq("id", c.id).select().single();
+    setGuardandoEdit(false);
+    if (error) { setErrorEdit("No se pudo guardar: " + error.message); return; }
+    setC(data);
+    setEditando(false);
+    onCambio();
+  };
+
+  const enviarRevision = async () => {
+    await supabase.from("cubicaciones").update({ estado: "En revisión" }).eq("id", c.id);
+    setC({ ...c, estado: "En revisión" });
+    onCambio();
+  };
+
+  return (
+    <div className="ticket" style={{ "--e": ESTADOS_CUB[c.estado] }}>
+      <div className="t-head">
+        <div>
+          <div className="t-id">{c.periodo_desde} → {c.periodo_hasta}</div>
+          <div className="t-proj">{c.proyecto}</div>
+        </div>
+        <div className="stamp">{c.estado}</div>
+      </div>
+
+      {!editando ? (
+        <div className="t-body">
+          <b>{c.contratista}</b><br />
+          Bruto: ${Number(c.monto_bruto).toLocaleString()} · Retención: {(c.porc_retencion * 100).toFixed(0)}%<br />
+          Neto a cobrar: <span className="t-qty">${Number(c.monto_neto).toLocaleString()}</span>
+        </div>
+      ) : (
+        <div style={{ padding: "0 20px 14px 26px" }}>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div className="fld" style={{ flex: 1 }}><label>Período desde</label>
+              <input type="date" value={ef.periodoDesde} onChange={(e) => setEf({ ...ef, periodoDesde: e.target.value })} /></div>
+            <div className="fld" style={{ flex: 1 }}><label>Período hasta</label>
+              <input type="date" value={ef.periodoHasta} onChange={(e) => setEf({ ...ef, periodoHasta: e.target.value })} /></div>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div className="fld" style={{ flex: 1 }}><label>Monto bruto</label>
+              <input type="number" min="0" step="any" value={ef.montoBruto} onChange={(e) => setEf({ ...ef, montoBruto: e.target.value })} /></div>
+            <div className="fld" style={{ flex: 1 }}><label>% Retención</label>
+              <input type="number" min="0" max="100" step="any" value={ef.porcRetencion} onChange={(e) => setEf({ ...ef, porcRetencion: e.target.value })} /></div>
+          </div>
+          {errorEdit && <div className="error-msg">{errorEdit}</div>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-ok" disabled={guardandoEdit} onClick={guardarEdicion}>
+              {guardandoEdit ? "Guardando…" : "Guardar cambios"}</button>
+            <button className="btn btn-gh" onClick={() => setEditando(false)}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {puedeEditar && !editando && (
+        <div className="t-actions">
+          {puedeEditarEste && (
+            <button className="btn btn-gh" onClick={() => setEditando(true)}>Editar</button>
+          )}
+          {c.estado === "Borrador" && (
+            <button className="btn btn-amb" onClick={enviarRevision}>Enviar a revisión</button>
+          )}
+          {c.estado === "En revisión" && <>
+            <button className="btn btn-ok" onClick={() => onAprobar(c)}>Aprobar</button>
+            <button className="btn btn-no" onClick={() => onRechazar(c)}>Rechazar</button>
+          </>}
+          {c.estado === "Aprobada" && (
+            pagos.some((p) => p.cubicacion_id === c.id) ? (
+              <span style={{ fontSize: 12, color: "var(--tinta2)", alignSelf: "center" }}>
+                Ya tiene solicitud de pago generada
+              </span>
+            ) : (
+              <button className="btn btn-amb" onClick={() => onCrearPago(c)}>Generar solicitud de pago</button>
+            )
+          )}
+        </div>
+      )}
     </div>
   );
 }
