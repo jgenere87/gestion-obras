@@ -1,33 +1,61 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
-import { PROYECTOS, ACTIVIDADES, CONTRATISTAS } from "./datos.js";
+import { PROYECTOS, ACTIVIDADES, PARTIDAS, CONTRATISTAS } from "./datos.js";
 import BuscarSelect from "./BuscarSelect.jsx";
 
-const ESTADOS_CONT = { Activo:"#2E7D4F", Suspendido:"#B07D10", Terminado:"#6B675C", Liquidado:"#33586E" };
+const ESTADOS_CONT = {
+  Borrador:"#8A8578", "En licitación":"#B07D10", "Pendiente aprobación":"#33586E",
+  Activo:"#2E7D4F", Suspendido:"#B3462E", Terminado:"#6B675C", Liquidado:"#1F3864",
+};
 
 export default function Contratos({ correo, perfil }) {
   const [contratos, setContratos] = useState([]);
+  const [planificaciones, setPlanificaciones] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [mostrarForm, setMostrarForm] = useState(false);
   const [expandido, setExpandido] = useState(null);
   const [msg, setMsg] = useState("");
 
   const puedeEditar = perfil.rol === "Admin" || perfil.rol === "Supervisor";
+  const esAdmin = perfil.rol === "Admin";
 
   const cargar = async () => {
     setCargando(true);
-    const { data } = await supabase.from("contratos").select("*").order("creado", { ascending: false });
-    setContratos(data || []);
+    const [c, p] = await Promise.all([
+      supabase.from("contratos").select("*").order("creado", { ascending: false }),
+      supabase.from("planificaciones").select("*"),
+    ]);
+    setContratos(c.data || []);
+    setPlanificaciones(p.data || []);
     setCargando(false);
   };
   useEffect(() => { cargar(); }, []);
 
   const aviso = (t) => { setMsg(t); setTimeout(() => setMsg(""), 4000); };
 
+  const proyectosPlanificados = planificaciones.map((p) => p.proyecto_id);
+
+  const cambiarEstado = async (c, estado) => {
+    const patch = { estado };
+    if (estado === "Activo") { patch.aprobado_por = correo; patch.fecha_aprobacion = new Date().toISOString().slice(0, 10); }
+    const { error } = await supabase.from("contratos").update(patch).eq("id", c.id);
+    if (error) { aviso("No se pudo actualizar: " + error.message); return; }
+    aviso(`Contrato ahora: ${estado}`);
+    cargar();
+  };
+
   return (
     <>
       <div className="sec-t" style={{ marginTop: 0 }}>Contratos · {contratos.length}</div>
       {msg && <div className="saved-note">✓ {msg}</div>}
+
+      <div style={{
+        background: "#E3F2FD", border: "1px solid #B5D4F4", borderRadius: 4, padding: "12px 14px",
+        fontSize: 12.5, color: "#0C447C", marginBottom: 18, lineHeight: 1.5,
+      }}>
+        Flujo: Borrador → En licitación → Pendiente aprobación → <b>Activo</b> (solo Admin puede activar).
+        Solo cuando un contrato está <b>Activo</b>, el personal de obra puede reportar esa actividad.
+      </div>
 
       {puedeEditar && (
         <button className="btn btn-amb" style={{ marginBottom: 16 }} onClick={() => setMostrarForm(!mostrarForm)}>
@@ -36,23 +64,30 @@ export default function Contratos({ correo, perfil }) {
       )}
 
       {mostrarForm && (
-        <FormContrato correo={correo}
-          onGuardado={(c) => { setContratos([c, ...contratos]); setMostrarForm(false); aviso("Contrato creado"); }} />
+        <FormContrato correo={correo} planificaciones={planificaciones}
+          onGuardado={(c) => { setContratos([c, ...contratos]); setMostrarForm(false); aviso("Contrato creado en Borrador"); }} />
       )}
 
       {cargando ? <div className="empty">Cargando…</div> :
        contratos.length === 0 ? (
-        <div className="empty"><b>Sin contratos aún</b>{puedeEditar ? "Crea el primero arriba." : "Aún no se han registrado contratos."}</div>
+        <div className="empty">
+          <b>Sin contratos aún</b>
+          {puedeEditar
+            ? (proyectosPlanificados.length === 0
+                ? "Primero planifica un proyecto en la pestaña Planificación."
+                : "Crea el primero arriba.")
+            : "Aún no se han registrado contratos."}
+        </div>
       ) : contratos.map((c) => (
-        <ContratoCard key={c.id} c={c} puedeEditar={puedeEditar}
+        <ContratoCard key={c.id} c={c} puedeEditar={puedeEditar} esAdmin={esAdmin}
           expandido={expandido === c.id} onExpandir={() => setExpandido(expandido === c.id ? null : c.id)}
-          onCambio={cargar} />
+          onCambiarEstado={cambiarEstado} planificaciones={planificaciones} />
       ))}
     </>
   );
 }
 
-function FormContrato({ correo, onGuardado }) {
+function FormContrato({ correo, planificaciones, onGuardado }) {
   const [f, setF] = useState({
     proyectoId: "", contratista: "", numeroContrato: "", tipoContrato: "Precio unitario",
     montoContratado: "", fechaContrato: "", fechaInicio: "", fechaFin: "", observaciones: "",
@@ -60,6 +95,7 @@ function FormContrato({ correo, onGuardado }) {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
 
+  const proyectosDisponibles = PROYECTOS.filter((p) => planificaciones.some((pl) => pl.proyecto_id === p[0]));
   const ok = f.proyectoId && f.contratista;
 
   const guardar = async () => {
@@ -78,12 +114,22 @@ function FormContrato({ correo, onGuardado }) {
     onGuardado(data);
   };
 
+  if (proyectosDisponibles.length === 0) {
+    return (
+      <div className="form" style={{ marginBottom: 20 }}>
+        <div className="error-msg">
+          Ningún proyecto tiene planificación aún. Ve a la pestaña <b>Planificación</b> y crea una primero.
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="form" style={{ marginBottom: 20 }}>
-      <div className="fld"><label>Proyecto</label>
+      <div className="fld"><label>Proyecto (solo planificados)</label>
         <BuscarSelect value={f.proyectoId} onChange={(v) => setF({ ...f, proyectoId: v })}
           placeholder="— Seleccionar proyecto —"
-          options={PROYECTOS.map((p) => ({ value: p[0], label: `${p[0]} · ${p[2]}` }))} /></div>
+          options={proyectosDisponibles.map((p) => ({ value: p[0], label: `${p[0]} · ${p[2]}` }))} /></div>
       <div className="fld"><label>Contratista</label>
         <BuscarSelect value={f.contratista} onChange={(v) => setF({ ...f, contratista: v })}
           placeholder="— Seleccionar contratista —"
@@ -109,12 +155,17 @@ function FormContrato({ correo, onGuardado }) {
         <textarea rows={2} value={f.observaciones} onChange={(e) => setF({ ...f, observaciones: e.target.value })} /></div>
       {error && <div className="error-msg">{error}</div>}
       <button className="btn btn-big" disabled={!ok || guardando} onClick={guardar}>
-        {guardando ? "Guardando…" : "Guardar contrato"}</button>
+        {guardando ? "Guardando…" : "Guardar contrato (Borrador)"}</button>
     </div>
   );
 }
 
-function ContratoCard({ c, puedeEditar, expandido, onExpandir, onCambio }) {
+function ContratoCard({ c, puedeEditar, esAdmin, expandido, onExpandir, onCambiarEstado, planificaciones }) {
+  const siguienteEstado = {
+    "Borrador": "En licitación",
+    "En licitación": "Pendiente aprobación",
+  }[c.estado];
+
   return (
     <div className="ticket" style={{ "--e": ESTADOS_CONT[c.estado] }}>
       <div className="t-head">
@@ -128,34 +179,67 @@ function ContratoCard({ c, puedeEditar, expandido, onExpandir, onCambio }) {
         <b>{c.contratista}</b> — {c.tipo_contrato}<br />
         Monto contratado: <span className="t-qty">${Number(c.monto_contratado).toLocaleString()}</span><br />
         {c.fecha_inicio && c.fecha_fin && <>Vigencia: {c.fecha_inicio} → {c.fecha_fin}<br /></>}
+        {c.aprobado_por && <>Aprobado por: {c.aprobado_por} el {c.fecha_aprobacion}<br /></>}
         {c.observaciones && <><i>“{c.observaciones}”</i><br /></>}
       </div>
-      <div className="t-actions" style={{ paddingTop: 0 }}>
+
+      <div className="t-actions" style={{ flexWrap: "wrap" }}>
         <button className="btn btn-gh" onClick={onExpandir}>
           {expandido ? "Ocultar partidas" : "Ver / agregar partidas"}
         </button>
+        {puedeEditar && siguienteEstado && (
+          <button className="btn btn-amb" onClick={() => onCambiarEstado(c, siguienteEstado)}>
+            Pasar a "{siguienteEstado}"
+          </button>
+        )}
+        {esAdmin && c.estado === "Pendiente aprobación" && (
+          <button className="btn btn-ok" onClick={() => onCambiarEstado(c, "Activo")}>
+            ✓ Aprobar y Activar
+          </button>
+        )}
+        {c.estado === "Activo" && puedeEditar && (
+          <button className="btn btn-no" onClick={() => onCambiarEstado(c, "Suspendido")}>Suspender</button>
+        )}
       </div>
-      {expandido && <PartidasContrato contrato={c} puedeEditar={puedeEditar} />}
+
+      {expandido && <PartidasContrato contrato={c} puedeEditar={puedeEditar} planificaciones={planificaciones} />}
     </div>
   );
 }
 
-function PartidasContrato({ contrato, puedeEditar }) {
+function PartidasContrato({ contrato, puedeEditar, planificaciones }) {
   const [partidas, setPartidas] = useState([]);
+  const [partidasPlanificadas, setPartidasPlanificadas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [mostrarForm, setMostrarForm] = useState(false);
 
+  const planificacion = planificaciones.find((p) => p.proyecto_id === contrato.proyecto_id);
+
   const cargar = async () => {
     setCargando(true);
-    const { data } = await supabase.from("contrato_actividades").select("*")
-      .eq("contrato_id", contrato.id).order("creado");
-    setPartidas(data || []);
+    const promesas = [
+      supabase.from("contrato_actividades").select("*").eq("contrato_id", contrato.id).order("creado"),
+    ];
+    if (planificacion) {
+      promesas.push(supabase.from("planificacion_partidas").select("*").eq("planificacion_id", planificacion.id));
+    }
+    const [ca, pp] = await Promise.all(promesas);
+    setPartidas(ca.data || []);
+    setPartidasPlanificadas(pp?.data || []);
     setCargando(false);
   };
   useEffect(() => { cargar(); }, [contrato.id]);
 
+  const partidasIdsPlanificadas = partidasPlanificadas.map((p) => p.partida_id);
+  const actividadesDisponibles = ACTIVIDADES.filter((a) => partidasIdsPlanificadas.includes(a[2]));
+
   return (
     <div style={{ padding: "0 20px 18px 26px" }}>
+      {!planificacion && (
+        <div style={{ fontSize: 12, color: "var(--rojo)", marginBottom: 10 }}>
+          Este proyecto no tiene planificación — no se pueden agregar partidas contratadas.
+        </div>
+      )}
       {cargando ? <div style={{ fontSize: 12, color: "var(--tinta2)" }}>Cargando…</div> : (
         <>
           {partidas.length === 0 && <div style={{ fontSize: 12, color: "var(--tinta2)", marginBottom: 10 }}>Sin partidas contratadas aún.</div>}
@@ -173,13 +257,13 @@ function PartidasContrato({ contrato, puedeEditar }) {
           ))}
         </>
       )}
-      {puedeEditar && (
+      {puedeEditar && planificacion && (
         <>
           <button className="btn btn-gh" style={{ marginTop: 8 }} onClick={() => setMostrarForm(!mostrarForm)}>
             {mostrarForm ? "Cancelar" : "+ Agregar partida"}
           </button>
           {mostrarForm && (
-            <FormPartida contrato={contrato}
+            <FormPartida contrato={contrato} actividadesDisponibles={actividadesDisponibles}
               onGuardado={(p) => { setPartidas([...partidas, p]); setMostrarForm(false); }} />
           )}
         </>
@@ -188,7 +272,7 @@ function PartidasContrato({ contrato, puedeEditar }) {
   );
 }
 
-function FormPartida({ contrato, onGuardado }) {
+function FormPartida({ contrato, actividadesDisponibles, onGuardado }) {
   const [actividadId, setActividadId] = useState("");
   const [cantidad, setCantidad] = useState("");
   const [precio, setPrecio] = useState("");
@@ -198,11 +282,18 @@ function FormPartida({ contrato, onGuardado }) {
   const actSel = ACTIVIDADES.find((a) => a[0] === actividadId);
   const ok = actividadId && cantidad > 0 && precio >= 0;
 
+  if (actividadesDisponibles.length === 0) {
+    return <div className="error-msg" style={{ marginTop: 10 }}>
+      No hay actividades disponibles — agrega primero las partidas correspondientes en Planificación.
+    </div>;
+  }
+
   const guardar = async () => {
     setGuardando(true); setError("");
     const fila = {
       contrato_id: contrato.id, actividad_id: actividadId, actividad: actSel?.[1] || "",
-      unidad: actSel?.[3] || "", cantidad_contratada: Number(cantidad), precio_unitario: Number(precio),
+      unidad: actSel?.[3] || "", partida_id: actSel?.[2] || null,
+      cantidad_contratada: Number(cantidad), precio_unitario: Number(precio),
       usuario: contrato.usuario,
     };
     const { data, error: e } = await supabase.from("contrato_actividades").insert(fila).select().single();
@@ -213,10 +304,9 @@ function FormPartida({ contrato, onGuardado }) {
 
   return (
     <div className="form" style={{ marginTop: 10, background: "#fff" }}>
-      <div className="fld"><label>Actividad</label>
-        <BuscarSelect value={actividadId} onChange={setActividadId}
-          placeholder="— Seleccionar actividad —"
-          options={ACTIVIDADES.map((a) => ({ value: a[0], label: a[1], sub: a[0] }))} /></div>
+      <div className="fld"><label>Actividad (solo de partidas planificadas)</label>
+        <BuscarSelect value={actividadId} onChange={setActividadId} placeholder="— Seleccionar actividad —"
+          options={actividadesDisponibles.map((a) => ({ value: a[0], label: a[1], sub: a[0] }))} /></div>
       <div style={{ display: "flex", gap: 10 }}>
         <div className="fld" style={{ flex: 1 }}><label>Cantidad contratada {actSel && `(${actSel[3]})`}</label>
           <input type="number" min="0" step="any" value={cantidad} onChange={(e) => setCantidad(e.target.value)} /></div>

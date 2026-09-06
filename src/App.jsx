@@ -8,6 +8,7 @@ import Cubicaciones from "./Cubicaciones.jsx";
 import OrdenesCambio from "./OrdenesCambio.jsx";
 import RFI from "./RFI.jsx";
 import Admin from "./Admin.jsx";
+import Planificacion from "./Planificacion.jsx";
 import "./estilos.css";
 
 const hoy = () => new Date().toISOString().slice(0, 10);
@@ -151,7 +152,7 @@ function Principal({ sesion, perfil }) {
       </header>
 
       <nav className="nav" aria-label="Secciones">
-        {[["panel","Panel"],["nuevo","+ Reporte"],["reportes","Reportes"],["contratos","Contratos"],
+        {[["panel","Panel"],["planificacion","Planificación"],["nuevo","+ Reporte"],["reportes","Reportes"],["contratos","Contratos"],
           ["cubicaciones","Cubicaciones"],["oc","Órdenes de Cambio"],["rfi","RFI"],["catalogo","Catálogo"],
           ...(perfil.rol === "Admin" ? [["admin","Administración"]] : [])].map(([k,t]) => (
           <button key={k} className={vista === k ? "on" : ""} onClick={() => setVista(k)}>{t}</button>
@@ -218,6 +219,7 @@ function Principal({ sesion, perfil }) {
           </>
         )}
 
+        {vista === "planificacion" && <Planificacion correo={sesion.user.email} perfil={perfil} />}
         {vista === "contratos" && <Contratos correo={sesion.user.email} perfil={perfil} />}
         {vista === "cubicaciones" && <Cubicaciones correo={sesion.user.email} perfil={perfil} />}
         {vista === "oc" && <OrdenesCambio correo={sesion.user.email} perfil={perfil} />}
@@ -251,12 +253,16 @@ function Principal({ sesion, perfil }) {
 /* ══════════════ FORMULARIO ══════════════ */
 function FormReporte({ correo, onGuardado }) {
   const [f, setF] = useState({
-    fecha: hoy(), proyectoId: "", partidaId: "", actividadId: "",
-    cantidad: "", contratista: "", frente: "", comentario: "",
+    fecha: hoy(), proyectoId: "", actividadId: "",
+    cantidad: "", frente: "", comentario: "",
   });
   const [foto, setFoto] = useState(null);
   const [subiendo, setSubiendo] = useState(false);
   const [error, setError] = useState("");
+
+  // Actividades contratadas y activas del proyecto elegido — solo esto se puede reportar
+  const [actsContratadas, setActsContratadas] = useState([]);
+  const [cargandoActs, setCargandoActs] = useState(false);
 
   // Recursos usados en este reporte (equipo/material/trabajo)
   const [recursosAgregados, setRecursosAgregados] = useState([]);
@@ -269,10 +275,21 @@ function FormReporte({ correo, onGuardado }) {
   const [equipos, setEquipos] = useState([]);
   const [hh, setHH] = useState([]);
 
-  const acts = ACTIVIDADES.filter((a) => a[2] === Number(f.partidaId));
-  const actSel = ACTIVIDADES.find((a) => a[0] === f.actividadId);
-  const unidad = actSel ? actSel[3] : "";
-  const ok = f.proyectoId && f.partidaId && f.actividadId && f.cantidad > 0 && f.contratista;
+  useEffect(() => {
+    if (!f.proyectoId) { setActsContratadas([]); return; }
+    setCargandoActs(true);
+    supabase.from("contrato_actividades")
+      .select("*, contratos!inner(id, proyecto_id, contratista, estado)")
+      .eq("estado", "Activo")
+      .eq("contratos.proyecto_id", Number(f.proyectoId))
+      .eq("contratos.estado", "Activo")
+      .then(({ data }) => { setActsContratadas(data || []); setCargandoActs(false); });
+  }, [f.proyectoId]);
+
+  const actSel = actsContratadas.find((a) => a.actividad_id === f.actividadId);
+  const unidad = actSel ? actSel.unidad : "";
+  const contratistaAuto = actSel ? actSel.contratos.contratista : "";
+  const ok = f.proyectoId && f.actividadId && f.cantidad > 0;
 
   const recursosFiltrados = useMemo(() => {
     if (!recBusqueda) return RECURSOS;
@@ -313,12 +330,12 @@ function FormReporte({ correo, onGuardado }) {
     }
 
     const p = PROYECTOS.find((x) => x[0] === Number(f.proyectoId));
-    const pt = PARTIDAS.find((x) => x[0] === Number(f.partidaId));
+    const pt = actSel ? PARTIDAS.find((x) => x[0] === actSel.partida_id) : null;
     const fila = {
       fecha: f.fecha, proyecto_id: Number(f.proyectoId), proyecto: p?.[2] || "",
       componente: pt?.[1] || "", paquete: pt?.[3] || "",
-      actividad_id: f.actividadId, actividad: actSel?.[1] || "", unidad,
-      cantidad: Number(f.cantidad), contratista: f.contratista,
+      actividad_id: f.actividadId, actividad: actSel?.actividad || "", unidad,
+      cantidad: Number(f.cantidad), contratista: contratistaAuto,
       frente: f.frente || null, comentario: f.comentario || null,
       foto_url, usuario: correo, estado,
     };
@@ -358,28 +375,34 @@ function FormReporte({ correo, onGuardado }) {
         <input type="date" value={f.fecha} onChange={(e) => setF({ ...f, fecha: e.target.value })} /></div>
 
       <div className="fld"><label>Proyecto</label>
-        <BuscarSelect value={f.proyectoId} onChange={(v) => setF({ ...f, proyectoId: v })}
+        <BuscarSelect value={f.proyectoId} onChange={(v) => setF({ ...f, proyectoId: v, actividadId: "" })}
           placeholder="— Seleccionar proyecto —"
           options={PROYECTOS.map((p) => ({ value: p[0], label: `${p[0]} · ${p[2]}` }))} /></div>
 
-      <div className="fld"><label>Partida</label>
-        <BuscarSelect value={f.partidaId} onChange={(v) => setF({ ...f, partidaId: v, actividadId: "" })}
-          placeholder="— Seleccionar partida —"
-          options={PARTIDAS.map((p) => ({ value: p[0], label: p[3], sub: `${p[1]} → ${p[2]}` }))} /></div>
+      {f.proyectoId && !cargandoActs && actsContratadas.length === 0 && (
+        <div className="error-msg">
+          Este proyecto no tiene actividades contratadas y activas todavía. No se puede reportar
+          hasta que un contrato esté <b>Activo</b> — revisa Planificación y Contratos.
+        </div>
+      )}
 
-      <div className="fld"><label>Actividad {unidad && <span className="unit-tag">{unidad}</span>}</label>
+      <div className="fld"><label>Actividad contratada {unidad && <span className="unit-tag">{unidad}</span>}</label>
         <BuscarSelect value={f.actividadId} onChange={(v) => setF({ ...f, actividadId: v })}
-          disabled={!f.partidaId} placeholder={f.partidaId ? "— Seleccionar actividad —" : "Primero elige la partida"}
-          options={acts.map((a) => ({ value: a[0], label: a[1], sub: a[0] }))} /></div>
+          disabled={!f.proyectoId || actsContratadas.length === 0}
+          placeholder={!f.proyectoId ? "Primero elige el proyecto" : cargandoActs ? "Cargando…" : "— Seleccionar actividad —"}
+          options={actsContratadas.map((a) => ({ value: a.actividad_id, label: a.actividad, sub: `${a.actividad_id} · ${a.contratos.contratista}` }))} /></div>
 
       <div className="fld"><label>Cantidad ejecutada {unidad && `(${unidad})`}</label>
         <input type="number" min="0" step="any" placeholder="0.00"
           value={f.cantidad} onChange={(e) => setF({ ...f, cantidad: e.target.value })} /></div>
 
-      <div className="fld"><label>Contratista</label>
-        <BuscarSelect value={f.contratista} onChange={(v) => setF({ ...f, contratista: v })}
-          placeholder="— Seleccionar contratista —"
-          options={CONTRATISTAS.map((c) => ({ value: c, label: c }))} /></div>
+      {contratistaAuto && (
+        <div className="fld"><label>Contratista</label>
+          <div style={{ padding: "11px 10px", border: "1px solid var(--linea)", borderRadius: 3, background: "#F2F0EA", fontSize: 15 }}>
+            {contratistaAuto}
+          </div>
+        </div>
+      )}
 
 
       <div className="sec-t" style={{ fontSize: 15 }}>Recursos utilizados</div>
