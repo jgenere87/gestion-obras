@@ -1,12 +1,15 @@
 import { useState } from "react";
+import { CONTRATISTAS } from "./datos.js";
+import BuscarSelect from "./BuscarSelect.jsx";
 
 const CARGOS = ["Operador","Maestro","Ayudante","Técnico","Supervisor","Otro"];
 const TIPOS_EQUIPO = ["Excavadora","Volquete","Grúa","Compactador","Bomba","Andamio","Tractor","Retropala","Otro"];
 
 /* Sección de Equipos usados — se monta dentro de FormReporte */
-export function SeccionEquipos({ contratista, equipos, setEquipos }) {
+export function SeccionEquipos({ contratistaDefecto, equipos, setEquipos }) {
   const [nombre, setNombre] = useState("");
   const [tipo, setTipo] = useState("Excavadora");
+  const [contratista, setContratista] = useState(contratistaDefecto || "");
   const [horasTrab, setHorasTrab] = useState("");
   const [horasParadas, setHorasParadas] = useState("");
   const [causa, setCausa] = useState("");
@@ -20,6 +23,7 @@ export function SeccionEquipos({ contratista, equipos, setEquipos }) {
       causa_parada: causa || null,
     }]);
     setNombre(""); setHorasTrab(""); setHorasParadas(""); setCausa(""); setMostrar(false);
+    setContratista(contratistaDefecto || "");
   };
   const quitar = (i) => setEquipos(equipos.filter((_, idx) => idx !== i));
 
@@ -32,7 +36,7 @@ export function SeccionEquipos({ contratista, equipos, setEquipos }) {
           <span style={{ flex: 1, fontSize: 13 }}>
             <b>{e.equipo}</b>{" "}
             <span style={{ color: "var(--tinta2)", fontSize: 12 }}>
-              — {e.horas_trabajadas}h trabajadas, {e.horas_paradas}h paradas{e.causa_parada ? ` (${e.causa_parada})` : ""}
+              — {e.contratista ? `${e.contratista} · ` : ""}{e.horas_trabajadas}h trabajadas, {e.horas_paradas}h paradas{e.causa_parada ? ` (${e.causa_parada})` : ""}
             </span>
           </span>
           <button type="button" className="btn btn-gh" style={{ padding: "4px 10px" }} onClick={() => quitar(i)}>Quitar</button>
@@ -48,6 +52,9 @@ export function SeccionEquipos({ contratista, equipos, setEquipos }) {
             <select value={tipo} onChange={(e) => setTipo(e.target.value)}>
               {TIPOS_EQUIPO.map((t) => <option key={t}>{t}</option>)}
             </select></div>
+          <div className="fld"><label>Contratista al que pertenece</label>
+            <BuscarSelect value={contratista} onChange={setContratista} placeholder="— Seleccionar contratista —"
+              options={CONTRATISTAS.map((c) => ({ value: c, label: c }))} /></div>
           <div style={{ display: "flex", gap: 10 }}>
             <div className="fld" style={{ flex: 1 }}><label>Horas trabajadas</label>
               <input type="number" min="0" step="any" value={horasTrab} onChange={(e) => setHorasTrab(e.target.value)} /></div>
@@ -67,8 +74,9 @@ export function SeccionEquipos({ contratista, equipos, setEquipos }) {
 }
 
 /* Sección de Hora-Hombre — se monta dentro de FormReporte */
-export function SeccionHH({ contratista, hh, setHH }) {
+export function SeccionHH({ contratistaDefecto, hh, setHH }) {
   const [cargo, setCargo] = useState("Ayudante");
+  const [contratista, setContratista] = useState(contratistaDefecto || "");
   const [cantPersonal, setCantPersonal] = useState("");
   const [horas, setHoras] = useState("");
   const [mostrar, setMostrar] = useState(false);
@@ -79,6 +87,7 @@ export function SeccionHH({ contratista, hh, setHH }) {
       contratista: contratista || null, cargo, cant_personal: Number(cantPersonal), horas_trabajadas: Number(horas),
     }]);
     setCantPersonal(""); setHoras(""); setMostrar(false);
+    setContratista(contratistaDefecto || "");
   };
   const quitar = (i) => setHH(hh.filter((_, idx) => idx !== i));
 
@@ -93,7 +102,7 @@ export function SeccionHH({ contratista, hh, setHH }) {
           <span style={{ flex: 1, fontSize: 13 }}>
             <b>{x.cant_personal} persona(s)</b>{" "}
             <span style={{ color: "var(--tinta2)", fontSize: 12 }}>
-              — {x.horas_trabajadas}h c/u = {x.cant_personal * x.horas_trabajadas} HH
+              — {x.contratista ? `${x.contratista} · ` : ""}{x.horas_trabajadas}h c/u = {x.cant_personal * x.horas_trabajadas} HH
             </span>
           </span>
           <button type="button" className="btn btn-gh" style={{ padding: "4px 10px" }} onClick={() => quitar(i)}>Quitar</button>
@@ -108,6 +117,9 @@ export function SeccionHH({ contratista, hh, setHH }) {
             <select value={cargo} onChange={(e) => setCargo(e.target.value)}>
               {CARGOS.map((c) => <option key={c}>{c}</option>)}
             </select></div>
+          <div className="fld"><label>Contratista al que pertenece</label>
+            <BuscarSelect value={contratista} onChange={setContratista} placeholder="— Seleccionar contratista —"
+              options={CONTRATISTAS.map((c) => ({ value: c, label: c }))} /></div>
           <div style={{ display: "flex", gap: 10 }}>
             <div className="fld" style={{ flex: 1 }}><label>Cantidad de personas</label>
               <input type="number" min="1" value={cantPersonal} onChange={(e) => setCantPersonal(e.target.value)} /></div>

@@ -473,8 +473,8 @@ function FormReporte({ correo, onGuardado }) {
           onChange={(e) => setFoto(e.target.files?.[0] || null)} />
         {foto && <div className="saved-note">📷 {foto.name}</div>}</div>
 
-      <SeccionEquipos contratista={f.contratista} equipos={equipos} setEquipos={setEquipos} />
-      <SeccionHH contratista={f.contratista} hh={hh} setHH={setHH} />
+      <SeccionEquipos contratistaDefecto={contratistaAuto} equipos={equipos} setEquipos={setEquipos} />
+      <SeccionHH contratistaDefecto={contratistaAuto} hh={hh} setHH={setHH} />
 
       <div className="fld"><label>Frente de trabajo (opcional)</label>
         <input placeholder="Ej: Sector A · Km 2+000" value={f.frente}
