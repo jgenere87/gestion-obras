@@ -7,6 +7,7 @@ import Contratos from "./Contratos.jsx";
 import Cubicaciones from "./Cubicaciones.jsx";
 import OrdenesCambio from "./OrdenesCambio.jsx";
 import RFI from "./RFI.jsx";
+import Admin from "./Admin.jsx";
 import "./estilos.css";
 
 const hoy = () => new Date().toISOString().slice(0, 10);
@@ -151,7 +152,8 @@ function Principal({ sesion, perfil }) {
 
       <nav className="nav" aria-label="Secciones">
         {[["panel","Panel"],["nuevo","+ Reporte"],["reportes","Reportes"],["contratos","Contratos"],
-          ["cubicaciones","Cubicaciones"],["oc","Órdenes de Cambio"],["rfi","RFI"],["catalogo","Catálogo"]].map(([k,t]) => (
+          ["cubicaciones","Cubicaciones"],["oc","Órdenes de Cambio"],["rfi","RFI"],["catalogo","Catálogo"],
+          ...(perfil.rol === "Admin" ? [["admin","Administración"]] : [])].map(([k,t]) => (
           <button key={k} className={vista === k ? "on" : ""} onClick={() => setVista(k)}>{t}</button>
         ))}
       </nav>
@@ -195,7 +197,7 @@ function Principal({ sesion, perfil }) {
             {msg && <div className="saved-note">✓ {msg}</div>}
             {visibles.length === 0 && (
               <div className="empty"><b>Sin reportes {filtro !== "Todos" ? `en “${filtro}”` : ""}</b>
-                {perfil.rol === "Ingeniero" ? "Solo ves tus propios reportes." : "Los reportes del equipo aparecerán aquí."}</div>
+                {perfil.rol !== "Admin" ? "Solo ves reportes de tus proyectos asignados." : "Los reportes del equipo aparecerán aquí."}</div>
             )}
             {visibles.map((r) => (
               <Ticket key={r.id} r={r}>
@@ -220,6 +222,7 @@ function Principal({ sesion, perfil }) {
         {vista === "cubicaciones" && <Cubicaciones correo={sesion.user.email} perfil={perfil} />}
         {vista === "oc" && <OrdenesCambio correo={sesion.user.email} perfil={perfil} />}
         {vista === "rfi" && <RFI correo={sesion.user.email} perfil={perfil} />}
+        {vista === "admin" && perfil.rol === "Admin" && <Admin correo={sesion.user.email} />}
 
         {vista === "catalogo" && (
           <>
