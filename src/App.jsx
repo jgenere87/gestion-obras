@@ -184,7 +184,7 @@ function Principal({ sesion, perfil }) {
         )}
 
         {vista === "nuevo" && (
-          <FormReporte correo={sesion.user.email}
+          <FormReporte correo={sesion.user.email} perfil={perfil}
             onGuardado={(r, estado) => { setReportes([r, ...reportes]); aviso(`Reporte guardado como ${estado}`); setVista("reportes"); }} />
         )}
 
@@ -251,7 +251,7 @@ function Principal({ sesion, perfil }) {
 }
 
 /* ══════════════ FORMULARIO ══════════════ */
-function FormReporte({ correo, onGuardado }) {
+function FormReporte({ correo, perfil, onGuardado }) {
   const [f, setF] = useState({
     fecha: hoy(), proyectoId: "", actividadId: "",
     cantidad: "", frente: "", comentario: "",
@@ -313,7 +313,11 @@ function FormReporte({ correo, onGuardado }) {
   const disponible = cantidadContratada - yaReportado;
   const seExcede = actSel && Number(f.cantidad) > disponible;
 
-  const ok = f.proyectoId && f.actividadId && f.cantidad > 0 && !seExcede;
+  const requiereRespaldoHoras = actSel?.tipo_medicion === "Horas";
+  const tieneRespaldoHoras = equipos.length > 0 || hh.length > 0;
+  const ok = f.proyectoId && f.actividadId && f.cantidad > 0 && !seExcede
+    && (!requiereRespaldoHoras || tieneRespaldoHoras);
+  const verPrecios = perfil.rol === "Admin" || perfil.rol === "Supervisor";
 
   const recursosFiltrados = useMemo(() => {
     if (!recBusqueda) return RECURSOS;
@@ -439,6 +443,19 @@ function FormReporte({ correo, onGuardado }) {
         </div>
       )}
 
+      {requiereRespaldoHoras && (
+        <div style={{
+          background: tieneRespaldoHoras ? "#E8F5E9" : "#FFF2CC",
+          border: `1px solid ${tieneRespaldoHoras ? "#2E7D4F" : "#B07D10"}`,
+          borderRadius: 4, padding: "10px 12px", fontSize: 12.5,
+          color: tieneRespaldoHoras ? "#1B5E20" : "#7D4A00", marginBottom: 14, lineHeight: 1.5,
+        }}>
+          Esta partida se cubica <b>por horas</b>. {tieneRespaldoHoras
+            ? "Ya agregaste el respaldo de equipo/hora-hombre más abajo."
+            : "Debes agregar al menos un equipo o cuadrilla con sus horas más abajo antes de guardar."}
+        </div>
+      )}
+
       <div className="fld"><label>Cantidad ejecutada {unidad && `(${unidad})`}</label>
         <input type="number" min="0" step="any" placeholder="0.00"
           value={f.cantidad} onChange={(e) => setF({ ...f, cantidad: e.target.value })} /></div>
@@ -462,16 +479,19 @@ function FormReporte({ correo, onGuardado }) {
               <span style={{ flex: 1 }}>
                 <b>{r.recurso}</b>{" "}
                 <span style={{ color: "var(--tinta2)", fontSize: 12 }}>
-                  — {r.cantidad} {r.unidad} × ${r.costo_unitario} = ${(r.cantidad * r.costo_unitario).toFixed(2)}
+                  — {r.cantidad} {r.unidad}
+                  {verPrecios && <> × ${r.costo_unitario} = ${(r.cantidad * r.costo_unitario).toFixed(2)}</>}
                 </span>
               </span>
               <button type="button" className="btn btn-gh" style={{ padding: "4px 10px" }}
                 onClick={() => quitarRecurso(i)}>Quitar</button>
             </div>
           ))}
-          <div className="saved-note" style={{ color: "var(--tinta)", fontWeight: 600 }}>
-            Total recursos: ${totalRecursos.toFixed(2)}
-          </div>
+          {verPrecios && (
+            <div className="saved-note" style={{ color: "var(--tinta)", fontWeight: 600 }}>
+              Total recursos: ${totalRecursos.toFixed(2)}
+            </div>
+          )}
         </div>
       )}
 
@@ -484,7 +504,7 @@ function FormReporte({ correo, onGuardado }) {
           {recursosFiltrados.slice(0, 25).map((r) => (
             <div key={r[0]} onClick={() => elegirRecurso(r[0])}
               style={{ padding: "8px 10px", cursor: "pointer", borderBottom: "1px solid var(--linea)", fontSize: 13 }}>
-              <b>{r[1]}</b> <span style={{ color: "var(--tinta2)" }}>— {r[2]} · {r[3]} · ref. ${r[4]}</span>
+              <b>{r[1]}</b> <span style={{ color: "var(--tinta2)" }}>— {r[2]} · {r[3]}{verPrecios && <> · ref. ${r[4]}</>}</span>
             </div>
           ))}
           {recursosFiltrados.length === 0 && <div style={{ padding: 10, fontSize: 13, color: "var(--tinta2)" }}>Sin resultados</div>}
@@ -502,11 +522,13 @@ function FormReporte({ correo, onGuardado }) {
               <input type="number" min="0" step="any" placeholder="0.00"
                 value={recCantidad} onChange={(e) => setRecCantidad(e.target.value)} />
             </div>
-            <div className="fld" style={{ flex: 1, marginBottom: 0 }}>
-              <label>Costo unitario</label>
-              <input type="number" min="0" step="any" value={recCosto}
-                onChange={(e) => setRecCosto(e.target.value)} />
-            </div>
+            {verPrecios && (
+              <div className="fld" style={{ flex: 1, marginBottom: 0 }}>
+                <label>Costo unitario</label>
+                <input type="number" min="0" step="any" value={recCosto}
+                  onChange={(e) => setRecCosto(e.target.value)} />
+              </div>
+            )}
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
             <button type="button" className="btn btn-ok" onClick={agregarRecurso}>Agregar</button>
@@ -557,6 +579,7 @@ function Ticket({ r: rInicial, children, correo, perfil }) {
   const [guardandoExtra, setGuardandoExtra] = useState(false);
 
   const puedeEditar = perfil.rol === "Admin" || perfil.rol === "Supervisor" || r.usuario === correo;
+  const verPrecios = perfil.rol === "Admin" || perfil.rol === "Supervisor";
 
   const guardarEdicion = async () => {
     setGuardandoEdit(true); setErrorEdit("");
@@ -772,11 +795,11 @@ function Ticket({ r: rInicial, children, correo, perfil }) {
           ) : (
             <>
               {recursos.map((x) => (
-                <LineaRecurso key={x.id} x={x} puedeEditar={puedeEditar}
+                <LineaRecurso key={x.id} x={x} puedeEditar={puedeEditar} verPrecios={verPrecios}
                   onQuitar={() => quitarRecursoExistente(x.id)}
                   onGuardar={(cambios) => editarRecursoExistente(x.id, cambios)} />
               ))}
-              {recursos.length > 0 && (
+              {recursos.length > 0 && verPrecios && (
                 <div className="saved-note" style={{ color: "var(--tinta)", fontWeight: 600 }}>
                   Total: ${totalRecursos.toFixed(2)}
                 </div>
@@ -784,7 +807,7 @@ function Ticket({ r: rInicial, children, correo, perfil }) {
             </>
           )}
           {puedeEditar && (
-            <SeccionRecursoInline onAgregar={agregarRecursoExistente} guardando={guardandoExtra} />
+            <SeccionRecursoInline onAgregar={agregarRecursoExistente} guardando={guardandoExtra} verPrecios={verPrecios} />
           )}
         </div>
       )}
@@ -796,11 +819,13 @@ function Ticket({ r: rInicial, children, correo, perfil }) {
 
 /* Formulario compacto para agregar un recurso a un reporte ya creado */
 /* Línea de recurso con edición en línea (cantidad y costo unitario) */
-function LineaRecurso({ x, puedeEditar, onQuitar, onGuardar }) {
+function LineaRecurso({ x, puedeEditar, verPrecios, onQuitar, onGuardar }) {
   const [editando, setEditando] = useState(false);
   const [cantidad, setCantidad] = useState(x.cantidad);
   const [costo, setCosto] = useState(x.costo_unitario);
   const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => { setCantidad(x.cantidad); setCosto(x.costo_unitario); }, [x.cantidad, x.costo_unitario]);
 
   const guardar = async () => {
     setGuardando(true);
@@ -816,8 +841,10 @@ function LineaRecurso({ x, puedeEditar, onQuitar, onGuardar }) {
         <div style={{ display: "flex", gap: 8 }}>
           <input type="number" min="0" step="any" value={cantidad} onChange={(e) => setCantidad(e.target.value)}
             placeholder="Cantidad" style={{ flex: 1, border: "1px solid var(--linea)", borderRadius: 3, padding: "7px 9px", fontSize: 13 }} />
-          <input type="number" min="0" step="any" value={costo} onChange={(e) => setCosto(e.target.value)}
-            placeholder="Costo unitario" style={{ flex: 1, border: "1px solid var(--linea)", borderRadius: 3, padding: "7px 9px", fontSize: 13 }} />
+          {verPrecios && (
+            <input type="number" min="0" step="any" value={costo} onChange={(e) => setCosto(e.target.value)}
+              placeholder="Costo unitario" style={{ flex: 1, border: "1px solid var(--linea)", borderRadius: 3, padding: "7px 9px", fontSize: 13 }} />
+          )}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button className="btn btn-ok" style={{ padding: "6px 14px" }} disabled={guardando} onClick={guardar}>
@@ -833,9 +860,13 @@ function LineaRecurso({ x, puedeEditar, onQuitar, onGuardar }) {
       <span className="unit-tag" style={{ marginLeft: 0 }}>{x.tipo}</span>
       <span style={{ flex: 1, fontSize: 13 }}>
         <b>{x.recurso}</b>{" "}
-        <span style={{ color: "var(--tinta2)", fontSize: 12 }}>— {x.cantidad} {x.unidad} × ${x.costo_unitario}</span>
+        <span style={{ color: "var(--tinta2)", fontSize: 12 }}>
+          — {x.cantidad} {x.unidad}{verPrecios && <> × ${x.costo_unitario}</>}
+        </span>
       </span>
-      <span className="t-qty" style={{ fontSize: 13 }}>${Number(x.monto ?? x.cantidad * x.costo_unitario).toFixed(2)}</span>
+      {verPrecios && (
+        <span className="t-qty" style={{ fontSize: 13 }}>${Number(x.monto ?? x.cantidad * x.costo_unitario).toFixed(2)}</span>
+      )}
       {puedeEditar && (
         <div style={{ display: "flex", gap: 6, marginLeft: 8 }}>
           <button className="btn btn-gh" style={{ padding: "4px 10px" }} onClick={() => setEditando(true)}>Editar</button>
@@ -853,6 +884,10 @@ function LineaEquipo({ e, puedeEditar, onQuitar, onGuardar }) {
   const [horasParadas, setHorasParadas] = useState(e.horas_paradas);
   const [causa, setCausa] = useState(e.causa_parada || "");
   const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => {
+    setHorasTrab(e.horas_trabajadas); setHorasParadas(e.horas_paradas); setCausa(e.causa_parada || "");
+  }, [e.horas_trabajadas, e.horas_paradas, e.causa_parada]);
 
   const guardar = async () => {
     setGuardando(true);
@@ -910,6 +945,8 @@ function LineaHH({ x, puedeEditar, onQuitar, onGuardar }) {
   const [horas, setHoras] = useState(x.horas_trabajadas);
   const [guardando, setGuardando] = useState(false);
 
+  useEffect(() => { setCantPersonal(x.cant_personal); setHoras(x.horas_trabajadas); }, [x.cant_personal, x.horas_trabajadas]);
+
   const guardar = async () => {
     setGuardando(true);
     const error = await onGuardar({ cant_personal: Number(cantPersonal) || 1, horas_trabajadas: Number(horas) || 0 });
@@ -955,7 +992,7 @@ function LineaHH({ x, puedeEditar, onQuitar, onGuardar }) {
   );
 }
 
-function SeccionRecursoInline({ onAgregar, guardando }) {
+function SeccionRecursoInline({ onAgregar, guardando, verPrecios }) {
   const [busqueda, setBusqueda] = useState("");
   const [sel, setSel] = useState("");
   const [cantidad, setCantidad] = useState("");
@@ -1013,8 +1050,10 @@ function SeccionRecursoInline({ onAgregar, guardando }) {
           <div style={{ display: "flex", gap: 10 }}>
             <div className="fld" style={{ flex: 1 }}><label>Cantidad</label>
               <input type="number" min="0" step="any" value={cantidad} onChange={(e) => setCantidad(e.target.value)} /></div>
-            <div className="fld" style={{ flex: 1 }}><label>Costo unitario</label>
-              <input type="number" min="0" step="any" value={costo} onChange={(e) => setCosto(e.target.value)} /></div>
+            {verPrecios && (
+              <div className="fld" style={{ flex: 1 }}><label>Costo unitario</label>
+                <input type="number" min="0" step="any" value={costo} onChange={(e) => setCosto(e.target.value)} /></div>
+            )}
           </div>
         </>
       )}

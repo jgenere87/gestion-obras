@@ -324,16 +324,7 @@ function PartidasContrato({ contrato, puedeEditar, planificaciones }) {
         <>
           {partidas.length === 0 && <div style={{ fontSize: 12, color: "var(--tinta2)", marginBottom: 10 }}>Sin partidas contratadas aún.</div>}
           {partidas.map((p) => (
-            <div key={p.id} className="cat-row">
-              <span className="cat-id">{p.actividad_id}</span>
-              <span style={{ flex: 1, fontSize: 13 }}>
-                <b>{p.actividad}</b>{" "}
-                <span style={{ color: "var(--tinta2)", fontSize: 12 }}>
-                  — {p.cantidad_contratada} {p.unidad} × ${p.precio_unitario}
-                </span>
-              </span>
-              <span className="t-qty" style={{ fontSize: 13 }}>${Number(p.monto_contratado).toLocaleString()}</span>
-            </div>
+            <LineaPartidaContrato key={p.id} p={p} puedeEditar={puedeEditar} onCambio={cargar} />
           ))}
         </>
       )}
@@ -352,15 +343,78 @@ function PartidasContrato({ contrato, puedeEditar, planificaciones }) {
   );
 }
 
+function LineaPartidaContrato({ p, puedeEditar, onCambio }) {
+  const [editando, setEditando] = useState(false);
+  const [cantidad, setCantidad] = useState(p.cantidad_contratada);
+  const [precio, setPrecio] = useState(p.precio_unitario);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => { setCantidad(p.cantidad_contratada); setPrecio(p.precio_unitario); }, [p.cantidad_contratada, p.precio_unitario]);
+
+  const guardar = async () => {
+    setGuardando(true); setError("");
+    const { error: e } = await supabase.from("contrato_actividades")
+      .update({ cantidad_contratada: Number(cantidad), precio_unitario: Number(precio) }).eq("id", p.id);
+    setGuardando(false);
+    if (e) { setError("No se pudo guardar: " + e.message); return; }
+    setEditando(false);
+    onCambio();
+  };
+
+  if (editando) {
+    return (
+      <div className="cat-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
+        <span><span className="cat-id">{p.actividad_id}</span> <b>{p.actividad}</b></span>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input type="number" min="0" step="any" value={cantidad} onChange={(e) => setCantidad(e.target.value)}
+            placeholder={`Cantidad (${p.unidad})`} style={{ flex: 1, border: "1px solid var(--linea)", borderRadius: 3, padding: "7px 9px", fontSize: 13 }} />
+          <input type="number" min="0" step="any" value={precio} onChange={(e) => setPrecio(e.target.value)}
+            placeholder="Precio unitario" style={{ flex: 1, border: "1px solid var(--linea)", borderRadius: 3, padding: "7px 9px", fontSize: 13 }} />
+        </div>
+        {error && <div className="error-msg">{error}</div>}
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn btn-ok" style={{ padding: "6px 14px" }} disabled={guardando} onClick={guardar}>
+            {guardando ? "Guardando…" : "Guardar"}</button>
+          <button className="btn btn-gh" style={{ padding: "6px 14px" }} onClick={() => setEditando(false)}>Cancelar</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="cat-row" style={{ alignItems: "center" }}>
+      <span className="cat-id">{p.actividad_id}</span>
+      <span style={{ flex: 1, fontSize: 13 }}>
+        <b>{p.actividad}</b>{" "}
+        <span style={{ color: "var(--tinta2)", fontSize: 12 }}>
+          — {p.cantidad_contratada} {p.unidad} × ${p.precio_unitario}
+        </span>
+        {p.tipo_medicion === "Horas" && (
+          <span className="unit-tag" style={{ marginLeft: 6, background: "var(--acero)" }}>
+            Por Horas · ${p.precio_por_hora}/h
+          </span>
+        )}
+      </span>
+      <span className="t-qty" style={{ fontSize: 13 }}>${Number(p.monto_contratado).toLocaleString()}</span>
+      {puedeEditar && (
+        <button className="btn btn-gh" style={{ padding: "4px 10px", marginLeft: 8 }} onClick={() => setEditando(true)}>Editar</button>
+      )}
+    </div>
+  );
+}
+
 function FormPartida({ contrato, actividadesDisponibles, onGuardado }) {
   const [actividadId, setActividadId] = useState("");
   const [cantidad, setCantidad] = useState("");
   const [precio, setPrecio] = useState("");
+  const [tipoMedicion, setTipoMedicion] = useState("Topografia");
+  const [precioPorHora, setPrecioPorHora] = useState("");
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
 
   const actSel = ACTIVIDADES.find((a) => a[0] === actividadId);
-  const ok = actividadId && cantidad > 0 && precio >= 0;
+  const ok = actividadId && cantidad > 0 && precio >= 0 && (tipoMedicion === "Topografia" || precioPorHora > 0);
 
   if (actividadesDisponibles.length === 0) {
     return <div className="error-msg" style={{ marginTop: 10 }}>
@@ -374,6 +428,7 @@ function FormPartida({ contrato, actividadesDisponibles, onGuardado }) {
       contrato_id: contrato.id, actividad_id: actividadId, actividad: actSel?.[1] || "",
       unidad: actSel?.[3] || "", partida_id: actSel?.[2] || null,
       cantidad_contratada: Number(cantidad), precio_unitario: Number(precio),
+      tipo_medicion: tipoMedicion, precio_por_hora: tipoMedicion === "Horas" ? Number(precioPorHora) : null,
       usuario: contrato.usuario,
     };
     const { data, error: e } = await supabase.from("contrato_actividades").insert(fila).select().single();
@@ -393,6 +448,16 @@ function FormPartida({ contrato, actividadesDisponibles, onGuardado }) {
         <div className="fld" style={{ flex: 1 }}><label>Precio unitario</label>
           <input type="number" min="0" step="any" value={precio} onChange={(e) => setPrecio(e.target.value)} /></div>
       </div>
+      <div className="fld"><label>¿Cómo se cubica esta partida?</label>
+        <select value={tipoMedicion} onChange={(e) => setTipoMedicion(e.target.value)}>
+          <option value="Topografia">Por Topografía (cantidad de obra: M3, ML, etc.)</option>
+          <option value="Horas">Por Horas (requiere respaldo de equipo/recurso por horas)</option>
+        </select></div>
+      {tipoMedicion === "Horas" && (
+        <div className="fld"><label>Precio por hora del recurso/equipo contratado</label>
+          <input type="number" min="0" step="any" value={precioPorHora} onChange={(e) => setPrecioPorHora(e.target.value)} />
+        </div>
+      )}
       {error && <div className="error-msg">{error}</div>}
       <button className="btn btn-ok" disabled={!ok || guardando} onClick={guardar}>
         {guardando ? "Guardando…" : "Agregar partida"}</button>
