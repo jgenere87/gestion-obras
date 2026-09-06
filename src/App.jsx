@@ -289,7 +289,31 @@ function FormReporte({ correo, onGuardado }) {
   const actSel = actsContratadas.find((a) => a.actividad_id === f.actividadId);
   const unidad = actSel ? actSel.unidad : "";
   const contratistaAuto = actSel ? actSel.contratos.contratista : "";
-  const ok = f.proyectoId && f.actividadId && f.cantidad > 0;
+
+  // Cuánto ya se ha reportado de esta actividad en este proyecto, y cuánto queda disponible
+  const [yaReportado, setYaReportado] = useState(0);
+  const [cargandoSaldo, setCargandoSaldo] = useState(false);
+
+  useEffect(() => {
+    if (!f.proyectoId || !f.actividadId) { setYaReportado(0); return; }
+    setCargandoSaldo(true);
+    supabase.from("reportes")
+      .select("cantidad")
+      .eq("proyecto_id", Number(f.proyectoId))
+      .eq("actividad_id", f.actividadId)
+      .neq("estado", "Rechazado")
+      .then(({ data }) => {
+        const suma = (data || []).reduce((s, r) => s + Number(r.cantidad), 0);
+        setYaReportado(suma);
+        setCargandoSaldo(false);
+      });
+  }, [f.proyectoId, f.actividadId]);
+
+  const cantidadContratada = actSel ? Number(actSel.cantidad_contratada) : 0;
+  const disponible = cantidadContratada - yaReportado;
+  const seExcede = actSel && Number(f.cantidad) > disponible;
+
+  const ok = f.proyectoId && f.actividadId && f.cantidad > 0 && !seExcede;
 
   const recursosFiltrados = useMemo(() => {
     if (!recBusqueda) return RECURSOS;
@@ -340,7 +364,12 @@ function FormReporte({ correo, onGuardado }) {
       foto_url, usuario: correo, estado,
     };
     const { data, error: e2 } = await supabase.from("reportes").insert(fila).select().single();
-    if (e2) { setError("No se pudo guardar: " + e2.message); setSubiendo(false); return; }
+    if (e2) {
+      const msg = e2.message.includes("excede lo contratado")
+        ? e2.message.replace(/^.*?:\s*/, "") // limpia el prefijo técnico de Postgres
+        : "No se pudo guardar: " + e2.message;
+      setError(msg); setSubiendo(false); return;
+    }
 
     if (recursosAgregados.length > 0) {
       const filasRecursos = recursosAgregados.map((r) => ({
@@ -391,6 +420,24 @@ function FormReporte({ correo, onGuardado }) {
           disabled={!f.proyectoId || actsContratadas.length === 0}
           placeholder={!f.proyectoId ? "Primero elige el proyecto" : cargandoActs ? "Cargando…" : "— Seleccionar actividad —"}
           options={actsContratadas.map((a) => ({ value: a.actividad_id, label: a.actividad, sub: `${a.actividad_id} · ${a.contratos.contratista}` }))} /></div>
+
+      {actSel && !cargandoSaldo && (
+        <div style={{
+          background: seExcede ? "#FBEAE5" : "#E8F5E9",
+          border: `1px solid ${seExcede ? "#B3462E" : "#2E7D4F"}`,
+          borderRadius: 4, padding: "10px 12px", fontSize: 12.5,
+          color: seExcede ? "#7D2020" : "#1B5E20", marginBottom: 14, lineHeight: 1.5,
+        }}>
+          Contratado: <b>{cantidadContratada} {unidad}</b> · Ya reportado: <b>{yaReportado} {unidad}</b> ·
+          Disponible: <b>{disponible} {unidad}</b>
+          {seExcede && (
+            <div style={{ marginTop: 4, fontWeight: 700 }}>
+              ⚠ Esta cantidad excede lo contratado por {(Number(f.cantidad) - disponible).toFixed(2)} {unidad}.
+              No se puede guardar hasta que ajustes la cantidad o se contrate más.
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="fld"><label>Cantidad ejecutada {unidad && `(${unidad})`}</label>
         <input type="number" min="0" step="any" placeholder="0.00"
@@ -513,6 +560,30 @@ function Ticket({ r: rInicial, children, correo, perfil }) {
 
   const guardarEdicion = async () => {
     setGuardandoEdit(true); setErrorEdit("");
+
+    // Verificar contra lo contratado, excluyendo la cantidad actual de este mismo reporte
+    const { data: contratoAct } = await supabase.from("contrato_actividades")
+      .select("cantidad_contratada, contratos!inner(proyecto_id, estado)")
+      .eq("actividad_id", r.actividad_id).eq("estado", "Activo")
+      .eq("contratos.proyecto_id", r.proyecto_id).eq("contratos.estado", "Activo")
+      .maybeSingle();
+
+    if (contratoAct) {
+      const { data: otros } = await supabase.from("reportes")
+        .select("cantidad").eq("proyecto_id", r.proyecto_id).eq("actividad_id", r.actividad_id)
+        .neq("estado", "Rechazado").neq("id", r.id);
+      const sumaOtros = (otros || []).reduce((s, x) => s + Number(x.cantidad), 0);
+      const disponibleEdit = Number(contratoAct.cantidad_contratada) - sumaOtros;
+      if (Number(ef.cantidad) > disponibleEdit) {
+        setErrorEdit(
+          `Esta cantidad excede lo contratado. Disponible: ${disponibleEdit} ${r.unidad} ` +
+          `(contratado ${contratoAct.cantidad_contratada}, ya reportado en otros ${sumaOtros}).`
+        );
+        setGuardandoEdit(false);
+        return;
+      }
+    }
+
     const { data, error } = await supabase.from("reportes").update({
       cantidad: Number(ef.cantidad), frente: ef.frente || null, comentario: ef.comentario || null,
     }).eq("id", r.id).select().single();
