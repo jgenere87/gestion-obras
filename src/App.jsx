@@ -638,6 +638,21 @@ function Ticket({ r: rInicial, children, correo, perfil }) {
     await supabase.from("recursos_reporte").delete().eq("id", id);
     recargarRecursos();
   };
+  const editarRecursoExistente = async (id, cambios) => {
+    const { error } = await supabase.from("recursos_reporte").update(cambios).eq("id", id);
+    if (!error) recargarRecursos();
+    return error;
+  };
+  const editarEquipo = async (id, cambios) => {
+    const { error } = await supabase.from("reporte_equipos").update(cambios).eq("id", id);
+    if (!error) recargarEquiposHH();
+    return error;
+  };
+  const editarHH = async (id, cambios) => {
+    const { error } = await supabase.from("reporte_hh").update(cambios).eq("id", id);
+    if (!error) recargarEquiposHH();
+    return error;
+  };
 
   const guardarEquiposNuevos = async () => {
     setGuardandoExtra(true);
@@ -718,34 +733,14 @@ function Ticket({ r: rInicial, children, correo, perfil }) {
           ) : (
             <>
               {equiposHH.equipos.map((e) => (
-                <div key={e.id} className="cat-row" style={{ margin: "0 0 6px", alignItems: "center" }}>
-                  <span className="unit-tag" style={{ marginLeft: 0 }}>{e.tipo_equipo}</span>
-                  <span style={{ flex: 1, fontSize: 13 }}>
-                    <b>{e.equipo}</b>{" "}
-                    <span style={{ color: "var(--tinta2)", fontSize: 12 }}>
-                      — {e.contratista ? `${e.contratista} · ` : ""}{e.horas_trabajadas}h trabajadas, {e.horas_paradas}h paradas
-                    </span>
-                  </span>
-                  {puedeEditar && (
-                    <button className="btn btn-gh" style={{ padding: "4px 10px" }}
-                      onClick={() => quitarEquipo(e.id)}>Quitar</button>
-                  )}
-                </div>
+                <LineaEquipo key={e.id} e={e} puedeEditar={puedeEditar}
+                  onQuitar={() => quitarEquipo(e.id)}
+                  onGuardar={(cambios) => editarEquipo(e.id, cambios)} />
               ))}
               {equiposHH.hh.map((x) => (
-                <div key={x.id} className="cat-row" style={{ margin: "0 0 6px", alignItems: "center" }}>
-                  <span className="unit-tag" style={{ marginLeft: 0 }}>{x.cargo}</span>
-                  <span style={{ flex: 1, fontSize: 13 }}>
-                    <b>{x.cant_personal} persona(s)</b>{" "}
-                    <span style={{ color: "var(--tinta2)", fontSize: 12 }}>
-                      — {x.contratista ? `${x.contratista} · ` : ""}{x.horas_trabajadas}h c/u
-                    </span>
-                  </span>
-                  {puedeEditar && (
-                    <button className="btn btn-gh" style={{ padding: "4px 10px" }}
-                      onClick={() => quitarHH(x.id)}>Quitar</button>
-                  )}
-                </div>
+                <LineaHH key={x.id} x={x} puedeEditar={puedeEditar}
+                  onQuitar={() => quitarHH(x.id)}
+                  onGuardar={(cambios) => editarHH(x.id, cambios)} />
               ))}
               {equiposHH.hh.length > 0 && (
                 <div className="saved-note" style={{ color: "var(--tinta)", fontWeight: 600 }}>Total HH: {totalHH}</div>
@@ -777,20 +772,9 @@ function Ticket({ r: rInicial, children, correo, perfil }) {
           ) : (
             <>
               {recursos.map((x) => (
-                <div key={x.id} className="cat-row" style={{ margin: "0 0 6px", alignItems: "center" }}>
-                  <span className="unit-tag" style={{ marginLeft: 0 }}>{x.tipo}</span>
-                  <span style={{ flex: 1, fontSize: 13 }}>
-                    <b>{x.recurso}</b>{" "}
-                    <span style={{ color: "var(--tinta2)", fontSize: 12 }}>
-                      — {x.cantidad} {x.unidad} × ${x.costo_unitario}
-                    </span>
-                  </span>
-                  <span className="t-qty" style={{ fontSize: 13 }}>${Number(x.monto ?? x.cantidad * x.costo_unitario).toFixed(2)}</span>
-                  {puedeEditar && (
-                    <button className="btn btn-gh" style={{ padding: "4px 10px", marginLeft: 8 }}
-                      onClick={() => quitarRecursoExistente(x.id)}>Quitar</button>
-                  )}
-                </div>
+                <LineaRecurso key={x.id} x={x} puedeEditar={puedeEditar}
+                  onQuitar={() => quitarRecursoExistente(x.id)}
+                  onGuardar={(cambios) => editarRecursoExistente(x.id, cambios)} />
               ))}
               {recursos.length > 0 && (
                 <div className="saved-note" style={{ color: "var(--tinta)", fontWeight: 600 }}>
@@ -811,6 +795,166 @@ function Ticket({ r: rInicial, children, correo, perfil }) {
 }
 
 /* Formulario compacto para agregar un recurso a un reporte ya creado */
+/* Línea de recurso con edición en línea (cantidad y costo unitario) */
+function LineaRecurso({ x, puedeEditar, onQuitar, onGuardar }) {
+  const [editando, setEditando] = useState(false);
+  const [cantidad, setCantidad] = useState(x.cantidad);
+  const [costo, setCosto] = useState(x.costo_unitario);
+  const [guardando, setGuardando] = useState(false);
+
+  const guardar = async () => {
+    setGuardando(true);
+    const error = await onGuardar({ cantidad: Number(cantidad), costo_unitario: Number(costo) });
+    setGuardando(false);
+    if (!error) setEditando(false);
+  };
+
+  if (editando) {
+    return (
+      <div className="cat-row" style={{ margin: "0 0 6px", flexDirection: "column", alignItems: "stretch", gap: 8 }}>
+        <span><span className="unit-tag" style={{ marginLeft: 0 }}>{x.tipo}</span> <b>{x.recurso}</b></span>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input type="number" min="0" step="any" value={cantidad} onChange={(e) => setCantidad(e.target.value)}
+            placeholder="Cantidad" style={{ flex: 1, border: "1px solid var(--linea)", borderRadius: 3, padding: "7px 9px", fontSize: 13 }} />
+          <input type="number" min="0" step="any" value={costo} onChange={(e) => setCosto(e.target.value)}
+            placeholder="Costo unitario" style={{ flex: 1, border: "1px solid var(--linea)", borderRadius: 3, padding: "7px 9px", fontSize: 13 }} />
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn btn-ok" style={{ padding: "6px 14px" }} disabled={guardando} onClick={guardar}>
+            {guardando ? "Guardando…" : "Guardar"}</button>
+          <button className="btn btn-gh" style={{ padding: "6px 14px" }} onClick={() => setEditando(false)}>Cancelar</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="cat-row" style={{ margin: "0 0 6px", alignItems: "center" }}>
+      <span className="unit-tag" style={{ marginLeft: 0 }}>{x.tipo}</span>
+      <span style={{ flex: 1, fontSize: 13 }}>
+        <b>{x.recurso}</b>{" "}
+        <span style={{ color: "var(--tinta2)", fontSize: 12 }}>— {x.cantidad} {x.unidad} × ${x.costo_unitario}</span>
+      </span>
+      <span className="t-qty" style={{ fontSize: 13 }}>${Number(x.monto ?? x.cantidad * x.costo_unitario).toFixed(2)}</span>
+      {puedeEditar && (
+        <div style={{ display: "flex", gap: 6, marginLeft: 8 }}>
+          <button className="btn btn-gh" style={{ padding: "4px 10px" }} onClick={() => setEditando(true)}>Editar</button>
+          <button className="btn btn-gh" style={{ padding: "4px 10px" }} onClick={onQuitar}>Quitar</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Línea de equipo con edición en línea */
+function LineaEquipo({ e, puedeEditar, onQuitar, onGuardar }) {
+  const [editando, setEditando] = useState(false);
+  const [horasTrab, setHorasTrab] = useState(e.horas_trabajadas);
+  const [horasParadas, setHorasParadas] = useState(e.horas_paradas);
+  const [causa, setCausa] = useState(e.causa_parada || "");
+  const [guardando, setGuardando] = useState(false);
+
+  const guardar = async () => {
+    setGuardando(true);
+    const error = await onGuardar({
+      horas_trabajadas: Number(horasTrab) || 0, horas_paradas: Number(horasParadas) || 0, causa_parada: causa || null,
+    });
+    setGuardando(false);
+    if (!error) setEditando(false);
+  };
+
+  if (editando) {
+    return (
+      <div className="cat-row" style={{ margin: "0 0 6px", flexDirection: "column", alignItems: "stretch", gap: 8 }}>
+        <span><span className="unit-tag" style={{ marginLeft: 0 }}>{e.tipo_equipo}</span> <b>{e.equipo}</b></span>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input type="number" min="0" step="any" value={horasTrab} onChange={(ev) => setHorasTrab(ev.target.value)}
+            placeholder="Horas trabajadas" style={{ flex: 1, border: "1px solid var(--linea)", borderRadius: 3, padding: "7px 9px", fontSize: 13 }} />
+          <input type="number" min="0" step="any" value={horasParadas} onChange={(ev) => setHorasParadas(ev.target.value)}
+            placeholder="Horas paradas" style={{ flex: 1, border: "1px solid var(--linea)", borderRadius: 3, padding: "7px 9px", fontSize: 13 }} />
+        </div>
+        <input value={causa} onChange={(ev) => setCausa(ev.target.value)} placeholder="Causa de parada (opcional)"
+          style={{ border: "1px solid var(--linea)", borderRadius: 3, padding: "7px 9px", fontSize: 13 }} />
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn btn-ok" style={{ padding: "6px 14px" }} disabled={guardando} onClick={guardar}>
+            {guardando ? "Guardando…" : "Guardar"}</button>
+          <button className="btn btn-gh" style={{ padding: "6px 14px" }} onClick={() => setEditando(false)}>Cancelar</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="cat-row" style={{ margin: "0 0 6px", alignItems: "center" }}>
+      <span className="unit-tag" style={{ marginLeft: 0 }}>{e.tipo_equipo}</span>
+      <span style={{ flex: 1, fontSize: 13 }}>
+        <b>{e.equipo}</b>{" "}
+        <span style={{ color: "var(--tinta2)", fontSize: 12 }}>
+          — {e.contratista ? `${e.contratista} · ` : ""}{e.horas_trabajadas}h trabajadas, {e.horas_paradas}h paradas
+        </span>
+      </span>
+      {puedeEditar && (
+        <div style={{ display: "flex", gap: 6 }}>
+          <button className="btn btn-gh" style={{ padding: "4px 10px" }} onClick={() => setEditando(true)}>Editar</button>
+          <button className="btn btn-gh" style={{ padding: "4px 10px" }} onClick={onQuitar}>Quitar</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Línea de hora-hombre con edición en línea */
+function LineaHH({ x, puedeEditar, onQuitar, onGuardar }) {
+  const [editando, setEditando] = useState(false);
+  const [cantPersonal, setCantPersonal] = useState(x.cant_personal);
+  const [horas, setHoras] = useState(x.horas_trabajadas);
+  const [guardando, setGuardando] = useState(false);
+
+  const guardar = async () => {
+    setGuardando(true);
+    const error = await onGuardar({ cant_personal: Number(cantPersonal) || 1, horas_trabajadas: Number(horas) || 0 });
+    setGuardando(false);
+    if (!error) setEditando(false);
+  };
+
+  if (editando) {
+    return (
+      <div className="cat-row" style={{ margin: "0 0 6px", flexDirection: "column", alignItems: "stretch", gap: 8 }}>
+        <span><span className="unit-tag" style={{ marginLeft: 0 }}>{x.cargo}</span></span>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input type="number" min="1" value={cantPersonal} onChange={(e) => setCantPersonal(e.target.value)}
+            placeholder="Cantidad de personas" style={{ flex: 1, border: "1px solid var(--linea)", borderRadius: 3, padding: "7px 9px", fontSize: 13 }} />
+          <input type="number" min="0" step="any" value={horas} onChange={(e) => setHoras(e.target.value)}
+            placeholder="Horas trabajadas" style={{ flex: 1, border: "1px solid var(--linea)", borderRadius: 3, padding: "7px 9px", fontSize: 13 }} />
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn btn-ok" style={{ padding: "6px 14px" }} disabled={guardando} onClick={guardar}>
+            {guardando ? "Guardando…" : "Guardar"}</button>
+          <button className="btn btn-gh" style={{ padding: "6px 14px" }} onClick={() => setEditando(false)}>Cancelar</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="cat-row" style={{ margin: "0 0 6px", alignItems: "center" }}>
+      <span className="unit-tag" style={{ marginLeft: 0 }}>{x.cargo}</span>
+      <span style={{ flex: 1, fontSize: 13 }}>
+        <b>{x.cant_personal} persona(s)</b>{" "}
+        <span style={{ color: "var(--tinta2)", fontSize: 12 }}>
+          — {x.contratista ? `${x.contratista} · ` : ""}{x.horas_trabajadas}h c/u
+        </span>
+      </span>
+      {puedeEditar && (
+        <div style={{ display: "flex", gap: 6 }}>
+          <button className="btn btn-gh" style={{ padding: "4px 10px" }} onClick={() => setEditando(true)}>Editar</button>
+          <button className="btn btn-gh" style={{ padding: "4px 10px" }} onClick={onQuitar}>Quitar</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SeccionRecursoInline({ onAgregar, guardando }) {
   const [busqueda, setBusqueda] = useState("");
   const [sel, setSel] = useState("");
