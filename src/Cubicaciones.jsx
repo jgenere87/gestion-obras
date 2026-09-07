@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
-import { PROYECTOS, CONTRATISTAS } from "./datos.js";
+import { useCatalogos } from "./useCatalogos.js";
 import BuscarSelect from "./BuscarSelect.jsx";
 
 const ESTADOS_CUB = { Borrador:"#8A8578", "En revisión":"#B07D10", Aprobada:"#2E7D4F", Rechazada:"#B3462E", Pagada:"#33586E" };
@@ -14,6 +14,7 @@ export default function Cubicaciones({ correo, perfil }) {
   const [cargando, setCargando] = useState(true);
   const [mostrarForm, setMostrarForm] = useState(false);
   const [msg, setMsg] = useState("");
+  const { PROYECTOS, CONTRATISTAS, cargandoCatalogos } = useCatalogos();
 
   const puedeEditar = perfil.rol === "Admin" || perfil.rol === "Supervisor";
   const aviso = (t) => { setMsg(t); setTimeout(() => setMsg(""), 4000); };
@@ -80,6 +81,8 @@ export default function Cubicaciones({ correo, perfil }) {
     cargar();
   };
 
+  if (cargandoCatalogos) return <div className="empty">Cargando catálogos…</div>;
+
   return (
     <>
       <div className="chips">
@@ -96,7 +99,7 @@ export default function Cubicaciones({ correo, perfil }) {
             </button>
           )}
           {mostrarForm && (
-            <FormCubicacion correo={correo} contratos={contratos}
+            <FormCubicacion correo={correo} contratos={contratos} PROYECTOS={PROYECTOS} CONTRATISTAS={CONTRATISTAS}
               onGuardado={(c) => { setCubicaciones([c, ...cubicaciones]); setMostrarForm(false); aviso("Cubicación creada"); }} />
           )}
           {cargando ? <div className="empty">Cargando…</div> :
@@ -124,7 +127,7 @@ export default function Cubicaciones({ correo, perfil }) {
   );
 }
 
-function FormCubicacion({ correo, contratos, onGuardado }) {
+function FormCubicacion({ correo, contratos, PROYECTOS, CONTRATISTAS, onGuardado }) {
   const [f, setF] = useState({
     proyectoId: "", contratoId: "", contratista: "", periodoDesde: "", periodoHasta: "",
     montoBruto: "", porcRetencion: "5",

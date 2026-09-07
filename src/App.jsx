@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "./supabase.js";
-import { PROYECTOS, PARTIDAS, ACTIVIDADES, CONTRATISTAS, ESTADOS, RECURSOS } from "./datos.js";
+import { ESTADOS } from "./datos.js";
+import { useCatalogos } from "./useCatalogos.js";
 import { SeccionEquipos, SeccionHH } from "./EquiposHH.jsx";
 import BuscarSelect from "./BuscarSelect.jsx";
 import Contratos from "./Contratos.jsx";
@@ -9,6 +10,7 @@ import OrdenesCambio from "./OrdenesCambio.jsx";
 import RFI from "./RFI.jsx";
 import Admin from "./Admin.jsx";
 import Planificacion from "./Planificacion.jsx";
+import Catalogos from "./Catalogos.jsx";
 import "./estilos.css";
 
 const hoy = () => new Date().toISOString().slice(0, 10);
@@ -87,6 +89,7 @@ function Principal({ sesion, perfil }) {
   const [filtro, setFiltro] = useState("Todos");
   const [msg, setMsg] = useState("");
   const [busqueda, setBusqueda] = useState("");
+  const { PROYECTOS, PARTIDAS, ACTIVIDADES, CONTRATISTAS, RECURSOS, cargandoCatalogos } = useCatalogos();
 
   const cargar = async () => {
     const { data, error } = await supabase.from("reportes")
@@ -154,7 +157,7 @@ function Principal({ sesion, perfil }) {
       <nav className="nav" aria-label="Secciones">
         {[["panel","Panel"],["planificacion","Planificación"],["nuevo","+ Reporte"],["reportes","Reportes"],["contratos","Contratos"],
           ["cubicaciones","Cubicaciones"],["oc","Órdenes de Cambio"],["rfi","RFI"],["catalogo","Catálogo"],
-          ...(perfil.rol === "Admin" ? [["admin","Administración"]] : [])].map(([k,t]) => (
+          ...(perfil.rol === "Admin" ? [["admin","Administración"],["catalogos","Catálogos"]] : [])].map(([k,t]) => (
           <button key={k} className={vista === k ? "on" : ""} onClick={() => setVista(k)}>{t}</button>
         ))}
       </nav>
@@ -179,13 +182,16 @@ function Principal({ sesion, perfil }) {
               </div>
             ))}
             <div className="sec-t">Últimos reportes</div>
-            {visibles.slice(0, 3).map((r) => <Ticket key={r.id} r={r} correo={sesion.user.email} perfil={perfil} />)}
+            {visibles.slice(0, 3).map((r) => <Ticket key={r.id} r={r} correo={sesion.user.email} perfil={perfil} RECURSOS={RECURSOS} CONTRATISTAS={CONTRATISTAS} />)}
           </>
         )}
 
         {vista === "nuevo" && (
-          <FormReporte correo={sesion.user.email} perfil={perfil}
-            onGuardado={(r, estado) => { setReportes([r, ...reportes]); aviso(`Reporte guardado como ${estado}`); setVista("reportes"); }} />
+          cargandoCatalogos ? <div className="empty">Cargando catálogos…</div> : (
+            <FormReporte correo={sesion.user.email} perfil={perfil}
+              PROYECTOS={PROYECTOS} PARTIDAS={PARTIDAS} RECURSOS={RECURSOS} CONTRATISTAS={CONTRATISTAS}
+              onGuardado={(r, estado) => { setReportes([r, ...reportes]); aviso(`Reporte guardado como ${estado}`); setVista("reportes"); }} />
+          )
         )}
 
         {vista === "reportes" && (
@@ -201,7 +207,7 @@ function Principal({ sesion, perfil }) {
                 {perfil.rol !== "Admin" ? "Solo ves reportes de tus proyectos asignados." : "Los reportes del equipo aparecerán aquí."}</div>
             )}
             {visibles.map((r) => (
-              <Ticket key={r.id} r={r} correo={sesion.user.email} perfil={perfil}>
+              <Ticket key={r.id} r={r} correo={sesion.user.email} perfil={perfil} RECURSOS={RECURSOS} CONTRATISTAS={CONTRATISTAS}>
                 <div className="t-actions">
                   {puedeValidar && r.estado === "Enviado" && <>
                     <button className="btn btn-ok" onClick={() => cambiarEstado(r.id, "Validado")}>Validar</button>
@@ -225,6 +231,7 @@ function Principal({ sesion, perfil }) {
         {vista === "oc" && <OrdenesCambio correo={sesion.user.email} perfil={perfil} />}
         {vista === "rfi" && <RFI correo={sesion.user.email} perfil={perfil} />}
         {vista === "admin" && perfil.rol === "Admin" && <Admin correo={sesion.user.email} />}
+        {vista === "catalogos" && perfil.rol === "Admin" && <Catalogos />}
 
         {vista === "catalogo" && (
           <>
@@ -251,7 +258,7 @@ function Principal({ sesion, perfil }) {
 }
 
 /* ══════════════ FORMULARIO ══════════════ */
-function FormReporte({ correo, perfil, onGuardado }) {
+function FormReporte({ correo, perfil, PROYECTOS, PARTIDAS, RECURSOS, CONTRATISTAS, onGuardado }) {
   const [f, setF] = useState({
     fecha: hoy(), proyectoId: "", actividadId: "",
     cantidad: "", frente: "", comentario: "",
@@ -542,8 +549,8 @@ function FormReporte({ correo, perfil, onGuardado }) {
           onChange={(e) => setFoto(e.target.files?.[0] || null)} />
         {foto && <div className="saved-note">📷 {foto.name}</div>}</div>
 
-      <SeccionEquipos contratistaDefecto={contratistaAuto} equipos={equipos} setEquipos={setEquipos} />
-      <SeccionHH contratistaDefecto={contratistaAuto} hh={hh} setHH={setHH} />
+      <SeccionEquipos contratistaDefecto={contratistaAuto} equipos={equipos} setEquipos={setEquipos} CONTRATISTAS={CONTRATISTAS} />
+      <SeccionHH contratistaDefecto={contratistaAuto} hh={hh} setHH={setHH} CONTRATISTAS={CONTRATISTAS} />
 
       <div className="fld"><label>Frente de trabajo (opcional)</label>
         <input placeholder="Ej: Sector A · Km 2+000" value={f.frente}
@@ -563,7 +570,7 @@ function FormReporte({ correo, perfil, onGuardado }) {
 }
 
 /* ══════════════ TICKET ══════════════ */
-function Ticket({ r: rInicial, children, correo, perfil }) {
+function Ticket({ r: rInicial, children, correo, perfil, RECURSOS, CONTRATISTAS }) {
   const [r, setR] = useState(rInicial);
   const [recursos, setRecursos] = useState(null);
   const [equiposHH, setEquiposHH] = useState(null);
@@ -773,12 +780,12 @@ function Ticket({ r: rInicial, children, correo, perfil }) {
           {puedeEditar && (
             <>
               <SeccionEquipos contratistaDefecto={r.contratista}
-                equipos={equiposNuevos} setEquipos={setEquiposNuevos} />
+                equipos={equiposNuevos} setEquipos={setEquiposNuevos} CONTRATISTAS={CONTRATISTAS} />
               {equiposNuevos.length > 0 && (
                 <button className="btn btn-ok" style={{ marginBottom: 14 }} disabled={guardandoExtra}
                   onClick={guardarEquiposNuevos}>{guardandoExtra ? "Guardando…" : "Guardar equipos agregados"}</button>
               )}
-              <SeccionHH contratistaDefecto={r.contratista} hh={hhNuevos} setHH={setHhNuevos} />
+              <SeccionHH contratistaDefecto={r.contratista} hh={hhNuevos} setHH={setHhNuevos} CONTRATISTAS={CONTRATISTAS} />
               {hhNuevos.length > 0 && (
                 <button className="btn btn-ok" disabled={guardandoExtra}
                   onClick={guardarHhNuevos}>{guardandoExtra ? "Guardando…" : "Guardar hora-hombre agregada"}</button>
@@ -807,7 +814,7 @@ function Ticket({ r: rInicial, children, correo, perfil }) {
             </>
           )}
           {puedeEditar && (
-            <SeccionRecursoInline onAgregar={agregarRecursoExistente} guardando={guardandoExtra} verPrecios={verPrecios} />
+            <SeccionRecursoInline onAgregar={agregarRecursoExistente} guardando={guardandoExtra} verPrecios={verPrecios} RECURSOS={RECURSOS} />
           )}
         </div>
       )}
@@ -992,7 +999,7 @@ function LineaHH({ x, puedeEditar, onQuitar, onGuardar }) {
   );
 }
 
-function SeccionRecursoInline({ onAgregar, guardando, verPrecios }) {
+function SeccionRecursoInline({ onAgregar, guardando, verPrecios, RECURSOS }) {
   const [busqueda, setBusqueda] = useState("");
   const [sel, setSel] = useState("");
   const [cantidad, setCantidad] = useState("");

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
-import { PROYECTOS } from "./datos.js";
+import { useCatalogos } from "./useCatalogos.js";
 import BuscarSelect from "./BuscarSelect.jsx";
 
 const ESTADOS_OC = {
@@ -13,6 +13,7 @@ export default function OrdenesCambio({ correo, perfil }) {
   const [cargando, setCargando] = useState(true);
   const [mostrarForm, setMostrarForm] = useState(false);
   const [msg, setMsg] = useState("");
+  const { PROYECTOS, cargandoCatalogos } = useCatalogos();
 
   const puedeAprobar = perfil.rol === "Admin" || perfil.rol === "Supervisor";
   const aviso = (t) => { setMsg(t); setTimeout(() => setMsg(""), 4000); };
@@ -38,6 +39,8 @@ export default function OrdenesCambio({ correo, perfil }) {
     cargar();
   };
 
+  if (cargandoCatalogos) return <div className="empty">Cargando catálogos…</div>;
+
   return (
     <>
       <div className="sec-t" style={{ marginTop: 0 }}>Órdenes de Cambio · {ordenes.length}</div>
@@ -48,7 +51,7 @@ export default function OrdenesCambio({ correo, perfil }) {
       </button>
 
       {mostrarForm && (
-        <FormOC correo={correo}
+        <FormOC correo={correo} PROYECTOS={PROYECTOS}
           onGuardado={(o) => { setOrdenes([o, ...ordenes]); setMostrarForm(false); aviso("Orden de cambio solicitada"); }} />
       )}
 
@@ -154,7 +157,7 @@ function OcCard({ o: oInicial, puedeAprobar, correo, onCambiarEstado, onCambio }
   );
 }
 
-function FormOC({ correo, onGuardado }) {
+function FormOC({ correo, PROYECTOS, onGuardado }) {
   const [f, setF] = useState({
     proyectoId: "", tipoCambio: "Adicional", descripcion: "", causa: "",
     montoSolicitado: "", diasImpacto: "0",

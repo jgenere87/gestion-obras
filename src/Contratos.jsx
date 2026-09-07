@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
-import { PROYECTOS, ACTIVIDADES, PARTIDAS, CONTRATISTAS } from "./datos.js";
+import { useCatalogos } from "./useCatalogos.js";
 import BuscarSelect from "./BuscarSelect.jsx";
 
 const ESTADOS_CONT = {
@@ -15,6 +15,7 @@ export default function Contratos({ correo, perfil }) {
   const [mostrarForm, setMostrarForm] = useState(false);
   const [expandido, setExpandido] = useState(null);
   const [msg, setMsg] = useState("");
+  const { PROYECTOS, PARTIDAS, ACTIVIDADES, CONTRATISTAS, cargandoCatalogos } = useCatalogos();
 
   const puedeEditar = perfil.rol === "Admin" || perfil.rol === "Supervisor";
   const esAdmin = perfil.rol === "Admin";
@@ -44,6 +45,8 @@ export default function Contratos({ correo, perfil }) {
     cargar();
   };
 
+  if (cargandoCatalogos) return <div className="empty">Cargando catálogos…</div>;
+
   return (
     <>
       <div className="sec-t" style={{ marginTop: 0 }}>Contratos · {contratos.length}</div>
@@ -65,6 +68,7 @@ export default function Contratos({ correo, perfil }) {
 
       {mostrarForm && (
         <FormContrato correo={correo} planificaciones={planificaciones}
+          PROYECTOS={PROYECTOS} CONTRATISTAS={CONTRATISTAS}
           onGuardado={(c) => { setContratos([c, ...contratos]); setMostrarForm(false); aviso("Contrato creado en Borrador"); }} />
       )}
 
@@ -80,6 +84,7 @@ export default function Contratos({ correo, perfil }) {
         </div>
       ) : contratos.map((c) => (
         <ContratoCard key={c.id} c={c} puedeEditar={puedeEditar} esAdmin={esAdmin} correo={correo}
+          CONTRATISTAS={CONTRATISTAS} ACTIVIDADES={ACTIVIDADES}
           expandido={expandido === c.id} onExpandir={() => setExpandido(expandido === c.id ? null : c.id)}
           onCambiarEstado={cambiarEstado} planificaciones={planificaciones} />
       ))}
@@ -87,7 +92,7 @@ export default function Contratos({ correo, perfil }) {
   );
 }
 
-function FormContrato({ correo, planificaciones, onGuardado }) {
+function FormContrato({ correo, planificaciones, PROYECTOS, CONTRATISTAS, onGuardado }) {
   const [f, setF] = useState({
     proyectoId: "", contratista: "", numeroContrato: "", tipoContrato: "Precio unitario",
     montoContratado: "", fechaContrato: "", numeroOrdenServicio: "", fechaOrdenServicio: "",
@@ -170,7 +175,7 @@ function FormContrato({ correo, planificaciones, onGuardado }) {
   );
 }
 
-function ContratoCard({ c: cInicial, puedeEditar, esAdmin, expandido, onExpandir, onCambiarEstado, planificaciones, correo }) {
+function ContratoCard({ c: cInicial, puedeEditar, esAdmin, expandido, onExpandir, onCambiarEstado, planificaciones, correo, CONTRATISTAS, ACTIVIDADES }) {
   const [c, setC] = useState(cInicial);
   const [editando, setEditando] = useState(false);
   const [ef, setEf] = useState({
@@ -281,13 +286,13 @@ function ContratoCard({ c: cInicial, puedeEditar, esAdmin, expandido, onExpandir
         )}
       </div>
 
-      {expandido && <PartidasContrato contrato={c} puedeEditar={puedeEditar} planificaciones={planificaciones} />}
+      {expandido && <PartidasContrato contrato={c} puedeEditar={puedeEditar} planificaciones={planificaciones} ACTIVIDADES={ACTIVIDADES} />}
     </div>
   );
 }
 
 
-function PartidasContrato({ contrato, puedeEditar, planificaciones }) {
+function PartidasContrato({ contrato, puedeEditar, planificaciones, ACTIVIDADES }) {
   const [partidas, setPartidas] = useState([]);
   const [partidasPlanificadas, setPartidasPlanificadas] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -413,7 +418,7 @@ function FormPartida({ contrato, actividadesDisponibles, onGuardado }) {
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
 
-  const actSel = ACTIVIDADES.find((a) => a[0] === actividadId);
+  const actSel = actividadesDisponibles.find((a) => a[0] === actividadId);
   const ok = actividadId && cantidad > 0 && precio >= 0 && (tipoMedicion === "Topografia" || precioPorHora > 0);
 
   if (actividadesDisponibles.length === 0) {

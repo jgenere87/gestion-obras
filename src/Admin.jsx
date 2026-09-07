@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
-import { PROYECTOS } from "./datos.js";
+import { useCatalogos } from "./useCatalogos.js";
 import BuscarSelect from "./BuscarSelect.jsx";
 
 const ROL_COLOR = { Admin:"#B3462E", Supervisor:"#33586E", Ingeniero:"#2E7D4F" };
@@ -12,6 +12,7 @@ export default function Admin({ correo }) {
   const [mostrarForm, setMostrarForm] = useState(false);
   const [expandido, setExpandido] = useState(null);
   const [msg, setMsg] = useState("");
+  const { PROYECTOS, cargandoCatalogos } = useCatalogos();
 
   const aviso = (t) => { setMsg(t); setTimeout(() => setMsg(""), 4000); };
 
@@ -63,6 +64,8 @@ export default function Admin({ correo }) {
     aviso("Asignación eliminada");
     cargar();
   };
+
+  if (cargandoCatalogos) return <div className="empty">Cargando catálogos…</div>;
 
   return (
     <>
@@ -131,7 +134,7 @@ export default function Admin({ correo }) {
                   <button className="btn btn-gh" style={{ padding: "4px 10px" }} onClick={() => quitarAsignacion(a)}>Quitar</button>
                 </div>
               ))}
-              <AgregarProyecto onAgregar={(pid) => agregarAsignacion(u.correo, pid)} />
+              <AgregarProyecto onAgregar={(pid) => agregarAsignacion(u.correo, pid)} PROYECTOS={PROYECTOS} />
             </div>
           )}
         </div>
@@ -140,7 +143,7 @@ export default function Admin({ correo }) {
   );
 }
 
-function AgregarProyecto({ onAgregar }) {
+function AgregarProyecto({ onAgregar, PROYECTOS }) {
   const [proyectoId, setProyectoId] = useState("");
   return (
     <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "flex-start" }}>

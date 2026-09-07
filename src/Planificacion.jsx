@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "./supabase.js";
-import { PROYECTOS, PARTIDAS } from "./datos.js";
+import { useCatalogos } from "./useCatalogos.js";
 import BuscarSelect from "./BuscarSelect.jsx";
 
 const ESTADOS_PLAN = { Planificado:"#33586E", "En contratación":"#B07D10", Contratado:"#2E7D4F", Cerrado:"#6B675C" };
@@ -12,6 +12,7 @@ export default function Planificacion({ correo, perfil }) {
   const [mostrarForm, setMostrarForm] = useState(false);
   const [expandido, setExpandido] = useState(null);
   const [msg, setMsg] = useState("");
+  const { PROYECTOS, PARTIDAS, cargandoCatalogos } = useCatalogos();
 
   const puedeEditar = perfil.rol === "Admin" || perfil.rol === "Supervisor";
   const aviso = (t) => { setMsg(t); setTimeout(() => setMsg(""), 4000); };
@@ -37,6 +38,8 @@ export default function Planificacion({ correo, perfil }) {
   const presupuestoTotal = (planId) =>
     (partidasPorPlan[planId] || []).reduce((s, p) => s + Number(p.monto_presupuestado), 0);
 
+  if (cargandoCatalogos) return <div className="empty">Cargando catálogos…</div>;
+
   return (
     <>
       <div className="sec-t" style={{ marginTop: 0 }}>Planificación de proyectos · {planes.length}</div>
@@ -57,7 +60,7 @@ export default function Planificacion({ correo, perfil }) {
       )}
 
       {mostrarForm && (
-        <FormPlanificacion correo={correo} planesExistentes={planes}
+        <FormPlanificacion correo={correo} planesExistentes={planes} PROYECTOS={PROYECTOS}
           onGuardado={(p) => { setPlanes([p, ...planes]); setMostrarForm(false); setExpandido(p.id); aviso("Proyecto planificado — ahora agrega sus partidas"); }} />
       )}
 
@@ -65,7 +68,7 @@ export default function Planificacion({ correo, perfil }) {
        planes.length === 0 ? (
         <div className="empty"><b>Sin proyectos planificados</b>{puedeEditar ? "Crea el primero arriba." : "Aún no se ha planificado ningún proyecto asignado a ti."}</div>
       ) : planes.map((p) => (
-        <PlanCard key={p.id} p={p} puedeEditar={puedeEditar}
+        <PlanCard key={p.id} p={p} puedeEditar={puedeEditar} PARTIDAS={PARTIDAS}
           partidas={partidasPorPlan[p.id] || []} presupuestoTotal={presupuestoTotal(p.id)}
           expandido={expandido === p.id} onExpandir={() => setExpandido(expandido === p.id ? null : p.id)}
           onCambio={cargar} />
@@ -107,7 +110,7 @@ function FormPlanificacion({ correo, planesExistentes, onGuardado }) {
   );
 }
 
-function PlanCard({ p, puedeEditar, partidas, presupuestoTotal, expandido, onExpandir, onCambio }) {
+function PlanCard({ p, puedeEditar, partidas, presupuestoTotal, expandido, onExpandir, onCambio, PARTIDAS }) {
   return (
     <div className="ticket" style={{ "--e": ESTADOS_PLAN[p.estado] }}>
       <div className="t-head">
@@ -126,12 +129,12 @@ function PlanCard({ p, puedeEditar, partidas, presupuestoTotal, expandido, onExp
           {expandido ? "Ocultar partidas" : "Ver / agregar partidas"}
         </button>
       </div>
-      {expandido && <PartidasPlanificadas planificacion={p} puedeEditar={puedeEditar} onCambio={onCambio} />}
+      {expandido && <PartidasPlanificadas planificacion={p} puedeEditar={puedeEditar} onCambio={onCambio} PARTIDAS={PARTIDAS} />}
     </div>
   );
 }
 
-function PartidasPlanificadas({ planificacion, puedeEditar, onCambio }) {
+function PartidasPlanificadas({ planificacion, puedeEditar, onCambio, PARTIDAS }) {
   const [partidas, setPartidas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [mostrarForm, setMostrarForm] = useState(false);
@@ -185,7 +188,7 @@ function PartidasPlanificadas({ planificacion, puedeEditar, onCambio }) {
             {mostrarForm ? "Cancelar" : "+ Agregar partida"}
           </button>
           {mostrarForm && (
-            <FormPartidaPlan planificacion={planificacion} yaAgregada={yaAgregada}
+            <FormPartidaPlan planificacion={planificacion} yaAgregada={yaAgregada} PARTIDAS={PARTIDAS}
               onGuardado={() => { setMostrarForm(false); cargar(); onCambio(); }} />
           )}
         </>
@@ -194,7 +197,7 @@ function PartidasPlanificadas({ planificacion, puedeEditar, onCambio }) {
   );
 }
 
-function FormPartidaPlan({ planificacion, yaAgregada, onGuardado }) {
+function FormPartidaPlan({ planificacion, yaAgregada, PARTIDAS, onGuardado }) {
   const [partidaId, setPartidaId] = useState("");
   const [monto, setMonto] = useState("");
   const [fechaInicio, setFechaInicio] = useState("");

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabase.js";
-import { PROYECTOS } from "./datos.js";
+import { useCatalogos } from "./useCatalogos.js";
 import BuscarSelect from "./BuscarSelect.jsx";
 
 const ESTADOS_RFI = { Abierto:"#B07D10", Respondido:"#33586E", Cerrado:"#2E7D4F" };
@@ -13,6 +13,7 @@ export default function RFI({ correo, perfil }) {
   const [mostrarForm, setMostrarForm] = useState(false);
   const [filtro, setFiltro] = useState("Abiertos");
   const [msg, setMsg] = useState("");
+  const { PROYECTOS, cargandoCatalogos } = useCatalogos();
 
   const puedeResponder = perfil.rol === "Admin" || perfil.rol === "Supervisor";
   const aviso = (t) => { setMsg(t); setTimeout(() => setMsg(""), 4000); };
@@ -40,6 +41,8 @@ export default function RFI({ correo, perfil }) {
     cargar();
   };
 
+  if (cargandoCatalogos) return <div className="empty">Cargando catálogos…</div>;
+
   return (
     <>
       <div className="sec-t" style={{ marginTop: 0 }}>Solicitudes de Información (RFI) · {rfis.length}</div>
@@ -56,7 +59,7 @@ export default function RFI({ correo, perfil }) {
       </button>
 
       {mostrarForm && (
-        <FormRFI correo={correo}
+        <FormRFI correo={correo} PROYECTOS={PROYECTOS}
           onGuardado={(r) => { setRfis([r, ...rfis]); setMostrarForm(false); aviso(`RFI #${r.numero} creado`); }} />
       )}
 
@@ -71,7 +74,7 @@ export default function RFI({ correo, perfil }) {
   );
 }
 
-function FormRFI({ correo, onGuardado }) {
+function FormRFI({ correo, PROYECTOS, onGuardado }) {
   const [f, setF] = useState({
     proyectoId: "", asunto: "", pregunta: "", referencia: "", prioridad: "Media", fechaLimite: "",
   });

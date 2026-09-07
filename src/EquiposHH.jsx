@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { CONTRATISTAS } from "./datos.js";
 import BuscarSelect from "./BuscarSelect.jsx";
 
 const CARGOS = ["Operador","Maestro","Ayudante","Técnico","Supervisor","Otro"];
 const TIPOS_EQUIPO = ["Excavadora","Volquete","Grúa","Compactador","Bomba","Andamio","Tractor","Retropala","Otro"];
 
 /* Sección de Equipos usados — se monta dentro de FormReporte */
-export function SeccionEquipos({ contratistaDefecto, equipos, setEquipos }) {
+export function SeccionEquipos({ contratistaDefecto, equipos, setEquipos, CONTRATISTAS }) {
   const [nombre, setNombre] = useState("");
   const [tipo, setTipo] = useState("Excavadora");
   const [contratista, setContratista] = useState(contratistaDefecto || "");
@@ -74,7 +73,7 @@ export function SeccionEquipos({ contratistaDefecto, equipos, setEquipos }) {
 }
 
 /* Sección de Hora-Hombre — se monta dentro de FormReporte */
-export function SeccionHH({ contratistaDefecto, hh, setHH }) {
+export function SeccionHH({ contratistaDefecto, hh, setHH, CONTRATISTAS }) {
   const [cargo, setCargo] = useState("Ayudante");
   const [contratista, setContratista] = useState(contratistaDefecto || "");
   const [cantPersonal, setCantPersonal] = useState("");
